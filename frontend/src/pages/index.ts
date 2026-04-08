@@ -1,0 +1,7 @@
+export { default as LoginPage } from './LoginPage.vue'
+export { default as RegisterPage } from './RegisterPage.vue'
+export { default as DiaryPage } from './DiaryPage.vue'
+export { default as ProfilePage } from './ProfilePage.vue'
+export { default as TagsPage } from './TagsPage.vue'
+export { default as ModelsPage } from './ModelsPage.vue'
+export { default as NotFoundPage } from './NotFoundPage.vue'
