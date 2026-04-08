@@ -2,7 +2,7 @@
 
 支持多用户的个人网站平台，核心功能为 AI 日记系统。用户可撰写日记，系统调用 LLM 分析最近一周记录并给出积极评价。
 
-**技术栈**：React + Tailwind CSS / Python + FastAPI / LangChain / SQLite
+**技术栈**：React + Tailwind CSS / Python + FastAPI / LangChain / MySql
 
 ---
 
