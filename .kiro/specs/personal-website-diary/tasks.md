@@ -138,13 +138,13 @@
     - **Validates: Requirements 5.2, 5.6**
     - `# Feature: personal-website-diary, Property 8-9`
 
-- [ ] 9. 实现模型管理模块
-  - [ ] 9.1 实现 ModelProvider SQLAlchemy 模型和 Pydantic schema（ModelCreate、ModelResponse）
+- [x] 9. 实现模型管理模块
+  - [x] 9.1 实现 ModelProvider SQLAlchemy 模型和 Pydantic schema（ModelCreate、ModelResponse）
     - 字段：mod_id、uid、model_name、model_key（加密存储）、base_url、is_active、create_time
     - model_key 加密存储，ModelResponse 不返回 model_key
     - _需求：6.1, 6.2_
 
-  - [ ] 9.2 实现 ModelService 服务层
+  - [x] 9.2 实现 ModelService 服务层
     - `create_model(uid, data)` — 注册模型，加密 model_key
     - `get_models(uid)` — 获取当前用户模型列表
     - `update_model(uid, mod_id, data)` — 修改模型信息
@@ -152,7 +152,7 @@
     - `check_active_status()` — 定时检测模型活跃度
     - _需求：6.1, 6.3, 6.4, 6.5_
 
-  - [ ] 9.3 实现模型路由（`GET/POST/PUT/DELETE /models`）
+  - [x] 9.3 实现模型路由（`GET/POST/PUT/DELETE /models`）
     - _需求：6.1, 6.3, 6.4_
 
 - [ ] 10. 实现 AI 分析服务（ReAct Agent）

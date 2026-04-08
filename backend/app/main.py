@@ -4,12 +4,14 @@ FastAPI 应用入口
 """
 
 import os
+from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 
-# 加载环境变量
-load_dotenv()
+# 定位 .env：无论从哪个目录启动，都能找到 backend/.env
+_env_path = Path(__file__).resolve().parent.parent / ".env"
+load_dotenv(dotenv_path=_env_path)
 
 # 创建 FastAPI 应用实例
 app = FastAPI(

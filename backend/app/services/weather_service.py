@@ -1,56 +1,82 @@
 """
-天气查询服务
-使用 wttr.in 免费天气 API，根据地址字符串获取当日天气
-无需 API Key，支持中文城市名
+天气查询服务 — 基于高德地图 API
+流程：地址 → geocode 获取 adcode → weather 接口获取天气
 """
 
+import os
 import logging
 import httpx
 
 logger = logging.getLogger(__name__)
 
-# 天气状态码映射（wttr.in weatherCode）
-WEATHER_CODE_MAP = {
-    113: "晴", 116: "局部多云", 119: "多云", 122: "阴",
-    143: "雾", 176: "局部小雨", 179: "局部小雪", 182: "局部冻雨",
-    185: "局部冻雨", 200: "局部雷雨", 227: "吹雪", 230: "暴风雪",
-    248: "雾", 260: "冻雾", 263: "局部小雨", 266: "小雨",
-    281: "冻毛毛雨", 284: "大冻毛毛雨", 293: "局部小雨", 296: "小雨",
-    299: "中雨", 302: "中雨", 305: "局部大雨", 308: "大雨",
-    311: "小冻雨", 314: "中冻雨", 317: "小雨夹雪", 320: "中雨夹雪",
-    323: "局部小雪", 326: "局部小雪", 329: "局部中雪", 332: "中雪",
-    335: "局部大雪", 338: "大雪", 350: "冰雹", 353: "局部小雨",
-    356: "中到大雨", 359: "暴雨", 362: "小雨夹雪", 365: "中到大雨夹雪",
-    368: "小雪", 371: "中到大雪", 374: "小冰雹", 377: "中到大冰雹",
-    386: "局部雷雨", 389: "中到大雷雨", 392: "局部小雪伴雷", 395: "中到大雪伴雷",
-}
+AMAP_BASE = "https://restapi.amap.com/v3"
+
+
+async def _geocode(address: str, api_key: str) -> str | None:
+    """
+    地理编码：将地址转换为高德 adcode(行政区划编码)
+    :return: adcode 字符串，失败返回 None
+    """
+    url = f"{AMAP_BASE}/geocode/geo"
+    params = {"address": address, "key": api_key, "output": "JSON"}
+
+    async with httpx.AsyncClient(timeout=8.0) as client:
+        resp = await client.get(url, params=params)
+        resp.raise_for_status()
+        data = resp.json()
+
+    if data.get("status") != "1" or not data.get("geocodes"):
+        logger.warning("geocode 未找到结果，地址：%s", address)
+        return None
+
+    # adcode 在 geocodes[0].adcode
+    return data["geocodes"][0].get("adcode")
 
 
 async def get_weather(address: str) -> str:
     """
-    根据地址获取当日天气描述字符串。
+    根据地址获取当日天气描述。
 
-    :param address: 城市名或地址，支持中英文（如 "北京", "Shanghai"）
-    :return: 天气描述字符串，如 "晴 22°C"；失败时返回 "天气获取失败"
+    :param address: 城市名或详细地址，如 "北京" / "上海市浦东新区"
+    :return: 天气描述字符串，如 "晴 22°C 湿度 45%"；失败时返回简短提示
     """
     if not address or not address.strip():
         return "未设置地址"
 
-    url = f"https://wttr.in/{address.strip()}?format=j1&lang=zh"
+    api_key = os.getenv("WEATHER_API_KEY", "")
+    if not api_key:
+        logger.error("WEATHER_API_KEY 未配置")
+        return "天气服务未配置"
 
     try:
+        adcode = await _geocode(address.strip(), api_key)
+        if not adcode:
+            return "地址无法识别"
+
+        url = f"{AMAP_BASE}/weather/weatherInfo"
+        params = {"city": adcode, "key": api_key, "extensions": "base", "output": "JSON"}
+
         async with httpx.AsyncClient(timeout=8.0) as client:
-            resp = await client.get(url)
+            resp = await client.get(url, params=params)
             resp.raise_for_status()
             data = resp.json()
 
-        current = data["current_condition"][0]
-        temp_c = current["temp_C"]
-        weather_code = int(current["weatherCode"])
-        desc = WEATHER_CODE_MAP.get(weather_code, current.get("weatherDesc", [{}])[0].get("value", "未知"))
-        feels_like = current["FeelsLikeC"]
+        if data.get("status") != "1" or not data.get("lives"):
+            logger.warning("天气接口返回异常：%s", data)
+            return "天气获取失败"
 
-        return f"{desc} {temp_c}°C（体感 {feels_like}°C）"
+        live = data["lives"][0]
+        weather = live.get("weather", "未知")       # 晴、多云、小雨…
+        temperature = live.get("temperature", "--") # 摄氏度
+        humidity = live.get("humidity", "--")        # 湿度 %
+        winddirection = live.get("winddirection", "")
+        windpower = live.get("windpower", "")
+
+        parts = [f"{weather} {temperature}°C", f"湿度 {humidity}%"]
+        if winddirection and windpower:
+            parts.append(f"{winddirection}风 {windpower}级")
+
+        return " ".join(parts)
 
     except httpx.TimeoutException:
         logger.warning("天气查询超时，地址：%s", address)
