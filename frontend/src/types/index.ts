@@ -1,11 +1,14 @@
 // 用户
 export interface UserResponse {
-  uid: number
+  UID: number
   user_name: string
-  email: string
-  role: string
-  create_time: string
-  last_time: string
+  email: string | null
+  phone: string | null
+  age: number | null
+  gender: string | null
+  address: string | null
+  role: string | null
+  create_time: string | null
 }
 
 export interface TokenResponse {
@@ -15,41 +18,45 @@ export interface TokenResponse {
 
 // 标签
 export interface TagResponse {
-  tid: number
-  tag_name: string
+  id: number
+  tag_name: string | null
   color: string | null
-  creator: string
-  usage_cnt: number
+  creator: string | null
+  usage_count: number
+  create_time: string | null
 }
 
 // 日记
 export interface DiaryResponse {
-  nid: number
-  uid: number
-  content: string
+  NID: number
+  UID: number | null
+  content: string | null
   is_open: boolean
-  date: string
+  date: string | null
   weather: string | null
-  ai_ans: string | null
+  AI_ans: string | null
+  create_time: string | null
   tags: TagResponse[]
-  create_time: string
 }
 
 // 分析
 export interface AnalysisResponse {
-  thk_id: number
-  nid: number
-  thk_time: string
-  token_cost: number | null
-  thk_log: string | null
+  Thk_ID: number
+  NID: number
+  Thk_time: string | null
+  Token_cost: number | null
+  cache_hit_tokens: number | null
+  cache_miss_tokens: number | null
+  output_tokens: number | null
+  Thk_log: string | null
   diary_length: number | null
 }
 
 // 模型
 export interface ModelResponse {
-  mod_id: number
+  id: number
   model_name: string
-  base_url: string
+  base_url: string | null
   is_active: boolean
-  create_time: string
+  create_time: string | null
 }
