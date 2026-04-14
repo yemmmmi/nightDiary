@@ -39,6 +39,15 @@ const router = createRouter({
       meta: { requiresAuth: true },
     },
     {
+      path: '/report',
+      component: () => import('@/pages/ReportPage.vue'),
+      meta: { requiresAuth: true },
+    },
+    {
+      path: '/help',
+      component: () => import('@/pages/HelpPage.vue'),
+    },
+    {
       path: '/:pathMatch(.*)*',
       component: () => import('@/pages/NotFoundPage.vue'),
     },

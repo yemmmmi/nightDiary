@@ -30,16 +30,10 @@
 
 ## 快速启动
 
-后端:
-       cd backend; .\venv\Scripts\activate; uvicorn app.main:app --reload
-前端:
-       cd frontend; npm run dev
-一步:  
-       .\start.ps1
 ### 1. 后端
 
 ```bash
-cd backend 
+cd backend
 
 # 创建并激活虚拟环境
 python -m venv venv

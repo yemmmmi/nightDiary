@@ -1,9 +1,28 @@
-/* Tailwind CSS 基础指令 */
+@import url('https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;600;700&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* 全局基础样式 */
 body {
-  @apply bg-gray-50 text-gray-900 antialiased;
+  @apply bg-amber-50/40 text-gray-800 antialiased;
+  font-family: 'Noto Serif SC', 'Georgia', serif;
+  font-size: 17px;
+  line-height: 1.75;
 }
+
+/* 密码输入框圆点加大 */
+input[type="password"] {
+  font-size: 24px;
+  letter-spacing: 4px;
+}
+input[type="password"]::placeholder {
+  font-size: 17px;
+  letter-spacing: normal;
+}
+
+/* 自定义滚动条 */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #d4c5a9; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #b8a88a; }

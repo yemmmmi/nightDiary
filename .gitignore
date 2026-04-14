@@ -36,6 +36,7 @@ frontend/.vite/
 # ── IDE ──────────────────────────────────────────
 .vscode/
 .idea/
+.kiro/
 *.swp
 *.swo
 
@@ -49,3 +50,6 @@ logs/
 
 # ── Chroma 向量数据库 ────────────────────────────
 chroma_data/
+# 后续更新代办内容
+To_Do_List.txt
+

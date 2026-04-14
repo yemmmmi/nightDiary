@@ -1,2 +1,6 @@
 export { authApi } from './auth'
+export { diaryApi } from './diary'
+export { analysisApi } from './analysis'
+export { tagsApi } from './tags'
+export { modelsApi } from './models'
 export { default as http } from './http'

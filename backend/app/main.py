@@ -42,6 +42,7 @@ from app.routers import auth, diary as diary_router
 from app.routers.weather import router as weather_router
 from app.routers.tags import router as tags_router
 from app.routers.models import router as models_router
+from app.routers.analysis import router as analysis_router
 
 # 启动时自动创建数据库表
 Base.metadata.create_all(bind=engine)
@@ -69,3 +70,5 @@ app.include_router(weather_router, prefix="/weather", tags=["天气"])
 app.include_router(tags_router, prefix="/tags", tags=["标签"])
 # 注册模型路由
 app.include_router(models_router, prefix="/models", tags=["模型管理"])
+# 注册分析路由
+app.include_router(analysis_router, prefix="/analysis", tags=["AI 分析"])

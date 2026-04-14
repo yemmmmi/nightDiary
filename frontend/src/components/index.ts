@@ -1,3 +1,3 @@
-// 通用组件统一导出入口
-// 各通用组件将在后续任务中实现并在此处导出
-export {}
+export { default as DiaryEditor } from './DiaryEditor.vue'
+export { default as DiaryList } from './DiaryList.vue'
+export { default as AIAnalysisPanel } from './AIAnalysisPanel.vue'
