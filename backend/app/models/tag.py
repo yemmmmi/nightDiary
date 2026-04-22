@@ -4,7 +4,7 @@
 
 from datetime import datetime
 from typing import Optional, List, TYPE_CHECKING
-from sqlalchemy import Integer, String, DateTime, ForeignKey, Table, Column
+from sqlalchemy import Integer, String, DateTime, ForeignKey, Table, Column, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.core.database import Base
 
@@ -17,6 +17,7 @@ diary_tag_association = Table(
     Base.metadata,
     Column("diary_id", Integer, ForeignKey("diary_entries.NID", ondelete="CASCADE"), primary_key=True),
     Column("tag_id",   Integer, ForeignKey("tags.TID",           ondelete="CASCADE"), primary_key=True),
+    Column("create_time", DateTime, server_default=func.now()),
 )
 
 

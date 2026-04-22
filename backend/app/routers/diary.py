@@ -22,7 +22,7 @@ async def create_entry(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    weather = await get_weather(current_user.address or "")
+    weather = await get_weather(current_user.address or "", user_id=current_user.UID)
     try:
         entry = diary_service.create_entry(
             db=db, uid=current_user.UID, content=body.content,

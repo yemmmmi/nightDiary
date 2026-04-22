@@ -8,7 +8,9 @@
           <span class="text-4xl font-bold text-ink-800 font-serif">夜记</span>
         </div>
         <div class="flex items-center gap-8 text-xl">
+          <WeatherWidget />
           <router-link to="/tags" class="text-ink-500 hover:text-diary-600 transition">标签</router-link>
+          <router-link to="/column" class="text-ink-500 hover:text-diary-600 transition">专栏</router-link>
           <router-link to="/models" class="text-ink-500 hover:text-diary-600 transition">模型</router-link>
           <router-link to="/report" class="text-ink-500 hover:text-diary-600 transition">报表</router-link>
           <router-link to="/help" class="text-ink-500 hover:text-diary-600 transition">帮助</router-link>
@@ -52,6 +54,7 @@ import { storeToRefs } from 'pinia'
 import DiaryEditor from '@/components/DiaryEditor.vue'
 import DiaryList from '@/components/DiaryList.vue'
 import AIAnalysisPanel from '@/components/AIAnalysisPanel.vue'
+import WeatherWidget from '@/components/WeatherWidget.vue'
 import type { DiaryResponse } from '@/types'
 
 const router = useRouter()

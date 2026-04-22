@@ -26,6 +26,8 @@ class DiaryEntry(Base):
     weather: Mapped[Optional[str]] = mapped_column("weather", String(50), nullable=True)
     AI_ans: Mapped[Optional[str]] = mapped_column("AI_ans", Text, nullable=True)
     create_time: Mapped[Optional[datetime]] = mapped_column("create_time", DateTime, default=datetime.utcnow)
+    published_to_column: Mapped[bool] = mapped_column("published_to_column", Boolean, default=False, nullable=False)
+    publish_time: Mapped[Optional[datetime]] = mapped_column("publish_time", DateTime, nullable=True)
 
     user: Mapped["User"] = relationship("User", back_populates="diary_entries")
     analysis: Mapped[Optional["Analysis"]] = relationship(

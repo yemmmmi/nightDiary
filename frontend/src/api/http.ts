@@ -7,7 +7,7 @@ const http = axios.create({
 
 // 请求拦截：自动附加 JWT token
 http.interceptors.request.use((config) => {
-  const token = localStorage.getItem('token')
+  const token = localStorage.getItem('token') || sessionStorage.getItem('token')
   if (token) {
     config.headers.Authorization = `Bearer ${token}`
   }
@@ -20,6 +20,8 @@ http.interceptors.response.use(
   (err) => {
     if (err.response?.status === 401) {
       localStorage.removeItem('token')
+      sessionStorage.removeItem('token')
+      localStorage.removeItem('rememberMe')
       window.location.href = '/login'
     }
     return Promise.reject(err)

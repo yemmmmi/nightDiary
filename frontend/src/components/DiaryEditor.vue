@@ -27,7 +27,16 @@
       </div>
 
       <div class="mt-6 flex items-center justify-between">
-        <span class="text-base text-ink-300">{{ content.trim().length }} 字</span>
+        <div class="flex items-center gap-6">
+          <span class="text-base text-ink-300">{{ content.trim().length }} 字</span>
+          <label class="flex items-center gap-2 cursor-pointer select-none">
+            <input type="checkbox" v-model="isPublic" class="sr-only peer" />
+            <div class="w-10 h-6 bg-ink-200 rounded-full peer-checked:bg-diary-500 transition relative">
+              <div class="absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition peer-checked:translate-x-4" :class="isPublic ? 'translate-x-4' : ''"></div>
+            </div>
+            <span class="text-base" :class="isPublic ? 'text-diary-600' : 'text-ink-400'">{{ isPublic ? '公开' : '私密' }}</span>
+          </label>
+        </div>
         <button
           type="submit" :disabled="!content.trim() || submitting"
           class="px-10 py-4 bg-gradient-to-r from-diary-500 to-diary-600 text-white rounded-2xl text-lg font-semibold hover:from-diary-600 hover:to-diary-700 disabled:opacity-40 disabled:cursor-not-allowed transition shadow-md shadow-diary-200/50"
@@ -52,6 +61,7 @@ const content = ref('')
 const tags = ref<TagResponse[]>([])
 const selectedTags = ref(new Set<number>())
 const submitting = ref(false)
+const isPublic = ref(false)
 const error = ref('')
 
 onMounted(async () => {
@@ -68,7 +78,7 @@ async function handleSubmit() {
   error.value = ''
   submitting.value = true
   try {
-    await diaryApi.create({ content: content.value, tag_ids: [...selectedTags.value] })
+    await diaryApi.create({ content: content.value, is_public: isPublic.value, tag_ids: [...selectedTags.value] })
     content.value = ''
     selectedTags.value.clear()
     emit('created')

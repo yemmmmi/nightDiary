@@ -1,3 +1,43 @@
 #本文件为项目完成后的优化内容
-1.user表新增数据当天weather,当用户登录后，若weather过期或不存在，网站自动调用mcp服务抓取天气赋值weather，weather采用user的UID+一个数字k（k等于年份x2+月份x1+当天日期）（需确保k值不冲突），由此采用weather-uid == k的判断逻辑来判定天气是否过期。
-2.给予上述weather，每个weather对应唯一的文本str，其内容为mcp调用的天气预报内容，结合此内容，前端应在写日记的页面上的主题产生相应变化。
+[✅️]1.user表新增数据当天weather,当用户登录后，若weather过期或不存在，网站自动调用mcp服务抓取天气赋值weather，
+        1.1已实现，但是假如用户没填address怎么办，会不会报错？应做相应处理。
+            1.11-- address 为空时写日记 — "未设置地址" 也会被缓存（TTL=5 分钟），避免每次都走判断逻辑，5 分钟后自动重试
+            1.12-- 用户后来补填 address — PUT /auth/me 检测到 address 变化后，先删旧缓存，再异步预热新地址的天气
+            1.13-- 登录时 address 为空 — if user.address: 直接跳过预热，不会报错
+[x] 2.给予上述weather，每个weather对应唯一的文本str，其内容为mcp调用的天气预报内容，结合此内容，前端应在写日记的页面上的主题产生相应变化。
+
+[x] 3.经舍友启发，考虑增加功能：导入文档/图片,ai自动总结日记并写入。
+
+
+
+
+#更新日志v1.2
+    使用时发现RAG、MCP服务处理流程完全串行, 这导致了响应速度太长(10-15s), 本次更新引入redis缓存，旨在减少响应时长。
+
+    【新增功能】
+    - 公开日记专栏页面（/column），访客无需登录即可浏览 is_open=true 且已发布的日记
+    - 日记发布/下架接口（POST/DELETE /public/column/entries/{nid}/publish）
+    - diary_entries 表新增 published_to_column、publish_time 字段，区分"公开"与"已发布到专栏"
+    - 前端 ColumnPage + ColumnDiaryCard + ColumnDiaryDetail 三个组件，风格与夜记主站一致
+
+    【Redis 缓存层】
+    - 引入 redis[hiredis] 异步客户端，通过 FastAPI lifespan 管理连接池（REDIS_URL + REDIS_POOL_SIZE 可配置）
+    - Cache-Aside 旁路缓存：公开日记列表和详情优先读 Redis，未命中再查 MySQL 并回填
+    - 缓存穿透防护：对不存在的日记 ID 缓存空值标记（column:null:{nid}，TTL=60s），防止恶意请求穿透到数据库
+    - 缓存击穿防护：热点日记缓存过期时，通过 Redis 分布式锁（SET NX EX + Lua 原子释放）确保仅一个请求回源 DB
+    - 缓存雪崩防护：所有缓存 TTL 加随机偏移（列表 300±120s，详情 600±60s），避免大量 key 同时过期
+    - 缓存一致性：日记更新/删除/下架时自动删除相关缓存，失败时依赖 TTL 过期保证最终一致性
+    - is_open 从 true 改为 false 时自动下架并清除缓存
+
+    【限流】
+    - 基于 Redis Sorted Set 的滑动窗口 IP 限流（默认 60 次/分钟）
+    - 响应头包含 X-RateLimit-Limit / Remaining / Reset
+    - 超限返回 HTTP 429
+
+    【降级容错】
+    - Redis 不可用时所有功能降级为直接查 MySQL，不影响核心业务
+    - 缓存删除失败仅记录日志，不阻塞主流程
+
+    【测试】
+    - 18 个 hypothesis 属性测试覆盖全部 15 条正确性属性
+    - Redis 集成验证脚本（scripts/test_redis_integration.py），32/32 通过

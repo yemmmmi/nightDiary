@@ -1,6 +1,6 @@
 """
 AI 分析记录模型 — 对齐 MySQL analysis 表
-Token 消耗分为：cache_hit（免费）、cache_miss（付费输入）、output（付费输出）
+Token 消耗分为: cache_hit(免费)、cache_miss(付费输入)、output(付费输出)
 """
 
 from datetime import datetime

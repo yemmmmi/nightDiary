@@ -6,9 +6,20 @@ GET /weather/today — 根据当前用户的 address 字段返回今日天气
 from fastapi import APIRouter, Depends
 from app.core.deps import get_current_user
 from app.models.user import User
-from app.services.weather_service import get_weather
+from app.services.weather_service import get_weather, preheat_weather_for_user
+from app.schemas.weather import WeatherPreheatResponse
 
 router = APIRouter()
+
+
+@router.post("/preheat", summary="天气缓存预热", response_model=WeatherPreheatResponse)
+async def preheat_weather(current_user: User = Depends(get_current_user)):
+    """
+    前端登录后调用，检查并预热天气缓存。
+    返回: {status: "hit"|"refreshed"|"no_address"|"error", weather: str|None}
+    """
+    result = await preheat_weather_for_user(current_user.UID, current_user.address or "")
+    return result
 
 
 @router.get("/today", summary="获取今日天气")

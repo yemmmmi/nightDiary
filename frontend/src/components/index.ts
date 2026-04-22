@@ -1,3 +1,5 @@
 export { default as DiaryEditor } from './DiaryEditor.vue'
 export { default as DiaryList } from './DiaryList.vue'
 export { default as AIAnalysisPanel } from './AIAnalysisPanel.vue'
+export { default as ColumnDiaryCard } from './ColumnDiaryCard.vue'
+export { default as ColumnDiaryDetail } from './ColumnDiaryDetail.vue'

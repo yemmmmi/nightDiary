@@ -4,6 +4,7 @@
 日记的增删改操作会同步更新 Chroma 向量库，保持 MySQL 和向量库的数据一致性。
 """
 
+import asyncio
 import logging
 from datetime import datetime, timedelta
 from typing import Optional, List
@@ -13,8 +14,26 @@ from sqlalchemy import desc
 from app.models.diary import DiaryEntry
 from app.models.tag import Tag
 from app.services import vector_service
+from app.services.public_column_service import invalidate_diary_cache, invalidate_list_cache
+from app.core.redis import get_redis
 
 logger = logging.getLogger(__name__)
+
+
+def _fire_and_forget_invalidation(nid: int) -> None:
+    """
+    在同步上下文中调度异步缓存失效任务（fire-and-forget）。
+    FastAPI 运行在 asyncio 事件循环中，因此可以通过 asyncio.ensure_future 调度。
+    缓存失效失败不应阻塞主流程。
+    """
+    redis_client = get_redis()
+    if redis_client is None:
+        return
+    try:
+        asyncio.ensure_future(invalidate_diary_cache(redis_client, nid))
+        asyncio.ensure_future(invalidate_list_cache(redis_client))
+    except Exception as e:
+        logger.warning("调度缓存失效任务失败: nid=%s, error=%s", nid, e)
 
 
 def create_entry(
@@ -84,12 +103,19 @@ def update_entry(
     if entry is None:
         return None
 
+    # 记录更新前的发布状态，用于判断是否需要缓存失效
+    was_published = entry.published_to_column
+
     if content is not None:
         if not content or not content.strip():
             raise ValueError("日记内容不能为空")
         entry.content = content
 
     if is_open is not None:
+        # 当 is_open 从 True 改为 False 且日记已发布到专栏时，自动下架
+        if entry.is_open and not is_open and entry.published_to_column:
+            entry.published_to_column = False
+            entry.publish_time = None
         entry.is_open = is_open
 
     if tag_ids is not None:
@@ -115,6 +141,13 @@ def update_entry(
         except Exception as exc:
             logger.warning("Chroma 同步更新失败: %s", exc)
 
+    # 缓存失效：当已发布日记的内容被更新，或日记被自动下架时，删除相关缓存
+    if was_published:
+        try:
+            _fire_and_forget_invalidation(nid)
+        except Exception as exc:
+            logger.warning("缓存失效调度失败: nid=%s, error=%s", nid, exc)
+
     return entry
 
 
@@ -123,6 +156,9 @@ def delete_entry(db: Session, uid: int, nid: int) -> bool:
     if entry is None:
         return False
 
+    # 记录删除前的发布状态
+    was_published = entry.published_to_column
+
     db.delete(entry)
     db.commit()
 
@@ -130,6 +166,13 @@ def delete_entry(db: Session, uid: int, nid: int) -> bool:
         vector_service.delete_diary(user_id=uid, nid=nid)
     except Exception as exc:
         logger.warning("Chroma 同步删除失败: %s", exc)
+
+    # 缓存失效：当删除的日记已发布到专栏时，删除相关缓存
+    if was_published:
+        try:
+            _fire_and_forget_invalidation(nid)
+        except Exception as exc:
+            logger.warning("缓存失效调度失败: nid=%s, error=%s", nid, exc)
 
     return True
 

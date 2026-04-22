@@ -36,6 +36,8 @@ export interface DiaryResponse {
   weather: string | null
   AI_ans: string | null
   create_time: string | null
+  published_to_column: boolean
+  publish_time: string | null
   tags: TagResponse[]
 }
 
@@ -59,4 +61,23 @@ export interface ModelResponse {
   base_url: string | null
   is_active: boolean
   create_time: string | null
+}
+
+// 公开专栏
+export interface PublicDiaryListItem {
+  NID: number
+  author_name: string
+  content_summary: string
+  publish_time: string
+  tags: TagResponse[]
+}
+
+export interface PublicDiaryDetail {
+  NID: number
+  author_name: string
+  content: string
+  date: string | null
+  weather: string | null
+  publish_time: string
+  tags: TagResponse[]
 }

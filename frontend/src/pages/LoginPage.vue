@@ -37,6 +37,14 @@
             />
           </div>
 
+          <div class="flex items-center">
+            <input
+              id="rememberMe" v-model="rememberMe" type="checkbox"
+              class="w-4 h-4 text-diary-600 bg-diary-50 border-diary-300 rounded focus:ring-diary-400 focus:ring-2"
+            />
+            <label for="rememberMe" class="ml-2 text-sm text-ink-500">记住我</label>
+          </div>
+
           <p v-if="errorMsg" class="text-red-500 text-sm bg-red-50 px-3 py-2 rounded-lg" role="alert">{{ errorMsg }}</p>
 
           <button
@@ -64,6 +72,7 @@ import { useAuthStore } from '@/stores/auth'
 const router = useRouter()
 const auth = useAuthStore()
 const form = reactive({ username: '', password: '' })
+const rememberMe = ref(false)
 const loading = ref(false)
 const errorMsg = ref('')
 
@@ -71,7 +80,7 @@ async function handleLogin() {
   errorMsg.value = ''
   loading.value = true
   try {
-    await auth.login(form.username, form.password)
+    await auth.login(form.username, form.password, rememberMe.value)
     router.push('/diary')
   } catch (err: any) {
     errorMsg.value = err.response?.data?.detail || '登录失败，请检查用户名和密码'

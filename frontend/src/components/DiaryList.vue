@@ -17,9 +17,27 @@
         class="group bg-white/70 backdrop-blur-sm rounded-3xl border border-diary-100 p-8 hover:shadow-lg hover:shadow-diary-200/40 hover:border-diary-200 transition-all cursor-pointer"
       >
         <div class="flex items-center justify-between mb-5">
-          <span class="text-base text-ink-400 bg-diary-50 px-4 py-2 rounded-full">{{ formatDate(entry.create_time) }}</span>
+          <div class="flex items-center gap-3">
+            <span class="text-base text-ink-400 bg-diary-50 px-4 py-2 rounded-full">{{ formatDate(entry.create_time) }}</span>
+            <span v-if="entry.is_open" class="text-sm text-diary-500 bg-diary-50 px-3 py-1 rounded-full">公开</span>
+            <span v-else class="text-sm text-ink-300 bg-ink-50 px-3 py-1 rounded-full">私密</span>
+          </div>
           <div class="flex items-center gap-4">
             <span v-if="entry.weather" class="text-base text-ink-300">{{ entry.weather }}</span>
+            <button
+              v-if="entry.is_open && !entry.published_to_column"
+              @click.stop="handlePublish(entry.NID)"
+              class="opacity-0 group-hover:opacity-100 text-base text-diary-500 hover:text-diary-600 transition px-3 py-1 rounded-lg hover:bg-diary-50"
+            >
+              发布专栏
+            </button>
+            <button
+              v-if="entry.published_to_column"
+              @click.stop="handleUnpublish(entry.NID)"
+              class="opacity-0 group-hover:opacity-100 text-base text-amber-500 hover:text-amber-600 transition px-3 py-1 rounded-lg hover:bg-amber-50"
+            >
+              下架专栏
+            </button>
             <button
               @click.stop="handleDelete(entry.NID)"
               class="opacity-0 group-hover:opacity-100 text-base text-red-400 hover:text-red-500 transition px-3 py-1 rounded-lg hover:bg-red-50"
@@ -62,6 +80,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { diaryApi } from '@/api/diary'
+import { columnApi } from '@/api/column'
 import type { DiaryResponse } from '@/types'
 
 defineEmits<{ select: [entry: DiaryResponse] }>()
@@ -80,6 +99,26 @@ async function handleDelete(nid: number) {
     await diaryApi.delete(nid)
     entries.value = entries.value.filter(e => e.NID !== nid)
   } catch {}
+}
+
+async function handlePublish(nid: number) {
+  try {
+    await columnApi.publish(nid)
+    const entry = entries.value.find(e => e.NID === nid)
+    if (entry) entry.published_to_column = true
+  } catch (err: any) {
+    alert(err.response?.data?.detail || '发布失败')
+  }
+}
+
+async function handleUnpublish(nid: number) {
+  try {
+    await columnApi.unpublish(nid)
+    const entry = entries.value.find(e => e.NID === nid)
+    if (entry) entry.published_to_column = false
+  } catch (err: any) {
+    alert(err.response?.data?.detail || '下架失败')
+  }
 }
 
 async function fetchEntries() {

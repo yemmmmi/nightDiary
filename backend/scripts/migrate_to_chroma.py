@@ -3,16 +3,16 @@
 ==========================================================
 
 使用场景：
-- 首次部署 Chroma RAG 功能时，MySQL 中已有历史日记数据
+- 首次部署 Chroma RAG 功能时, MySQL 中已有历史日记数据
 - 需要一次性将所有日记向量化并写入 Chroma
 
 运行方式（在 backend 目录下）：
     python -m scripts.migrate_to_chroma
 
 注意事项：
-- 首次运行会下载 Embedding 模型（约 400MB），请确保网络通畅
+- 首次运行会下载 Embedding 模型(约 400MB),请确保网络通畅
 - 迁移过程中不会修改 MySQL 数据，只是读取并写入 Chroma
-- 可以重复运行（使用 upsert，不会产生重复数据）
+- 可以重复运行(使用 upsert, 不会产生重复数据)
 """
 
 import sys
@@ -32,7 +32,7 @@ from app.services.vector_service import bulk_import_user_diaries
 
 def main():
     print("=" * 60)
-    print("  日记数据迁移：MySQL → Chroma 向量库")
+    print("  日记数据迁移 : MySQL → Chroma 向量库")
     print("=" * 60)
 
     db = SessionLocal()

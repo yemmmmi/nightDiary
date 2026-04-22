@@ -48,6 +48,10 @@ const router = createRouter({
       component: () => import('@/pages/HelpPage.vue'),
     },
     {
+      path: '/column',
+      component: () => import('@/pages/ColumnPage.vue'),
+    },
+    {
       path: '/:pathMatch(.*)*',
       component: () => import('@/pages/NotFoundPage.vue'),
     },

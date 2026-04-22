@@ -19,7 +19,7 @@ AI 分析服务模块 — ReAct Agent 架构
 import logging
 import os
 from datetime import datetime
-from typing import Optional, List
+from typing import Dict, Optional, List
 
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
@@ -54,12 +54,17 @@ class AIServiceUnavailableError(Exception):
 # ╚══════════════════════════════════════════════════════════════╝
 
 # System Prompt — 精简版，减少输入 token
-SYSTEM_PROMPT = """你是"夜记助手"，用户的朋友。阅读日记后给出简短的回应。
-回应要求：回应核心情感,语气正常少人机味,中文,50-150字。"""
+SYSTEM_PROMPT = """你是"夜记助手"，一个心理陪伴助手，调用工具的目的是为了
+更好地理解用户处境或提供客观建议、减少人机感。你的输出应控制在50-150字的中文。"""
 
 # Agent 模式专用 System Prompt（多了工具说明）
 AGENT_SYSTEM_PROMPT = SYSTEM_PROMPT + """
-可用工具:search_diary(搜索历史日记)、get_weather_info(查天气)。不需要就直接回应。"""
+可用工具:
+- search_diary(搜索历史日记，支持关键词/日期/标签多维度查询)
+- get_weather_info(查天气，自动获取用户地址)
+- analyze_sentiment(分析文本情感倾向、强度和关键词)
+- get_user_address(获取用户地址信息)
+不需要就直接回应。"""
 
 # 用户消息模板 — 精简，去掉空区块
 USER_PROMPT_TEMPLATE = """日记：{current_content}
@@ -76,12 +81,77 @@ FALLBACK_FEEDBACK = (
 
 
 # ╔══════════════════════════════════════════════════════════════╗
+# ║  纯函数（便于独立测试）                                         ║
+# ╚══════════════════════════════════════════════════════════════╝
+
+def should_use_cache(last_time: Optional[datetime], now: datetime, threshold_minutes: int = 30) -> bool:
+    """
+    判断是否应使用缓存。
+    - last_time 为 None → False (无活跃记录，应调用 API)
+    - now - last_time < threshold_minutes 分钟 → True (近期活跃，用缓存)
+    -                                     否则 → False (超过阈值, 应刷新)
+    """
+    if last_time is None:
+        return False
+    return (now - last_time).total_seconds() < threshold_minutes * 60
+
+
+def filter_diary_results(
+    results: List[Dict],
+    start_date: str = "",
+    end_date: str = "",
+    tag: str = "",
+) -> List[Dict]:
+    """
+    对日记检索结果进行多维度过滤（纯函数，便于独立测试）。
+
+    所有提供的条件取交集：
+    - start_date 非空时，仅保留 item["date"] >= start_date 的结果
+    - end_date 非空时，仅保留 item["date"] <= end_date 的结果
+    - tag 非空时，仅保留 item["tags"] 中包含该 tag 的结果
+
+    :param results: Chroma 检索返回的结果列表，每项含 date、tags、content 等字段
+    :param start_date: 开始日期 "YYYY-MM-DD"（可选）
+    :param end_date: 结束日期 "YYYY-MM-DD"（可选）
+    :param tag: 标签名称（可选）
+    :return: 过滤后的结果列表
+    """
+    filtered = results
+    if start_date:
+        filtered = [item for item in filtered if item.get("date", "") >= start_date]
+    if end_date:
+        filtered = [item for item in filtered if item.get("date", "") <= end_date]
+    if tag:
+        filtered = [item for item in filtered if tag in item.get("tags", "")]
+    return filtered
+
+
+def format_diary_result(item: Dict) -> str:
+    """
+    格式化单条日记结果为展示字符串（纯函数，便于独立测试）。
+
+    格式: [{date}]{tag_part} {snippet}
+    - tag_part: 有标签时为 " {tags}"，无标签时为空
+    - snippet: 内容前 150 字，超出部分用 "..." 截断
+
+    :param item: 日记结果字典，含 date、tags、content 字段
+    :return: 格式化后的字符串
+    """
+    date_str = item.get("date", "未知日期")
+    content = item.get("content", "")
+    tags = item.get("tags", "")
+    snippet = content[:150] + "..." if len(content) > 150 else content
+    tag_part = f" {tags}" if tags else ""
+    return f"[{date_str}]{tag_part} {snippet}"
+
+
+# ╔══════════════════════════════════════════════════════════════╗
 # ║  LangChain Tools（ReAct Agent 的工具集）                       ║
 # ╚══════════════════════════════════════════════════════════════╝
 
 def create_diary_search_tool(db: Session, user_id: int):
     """
-    工厂函数：创建日记语义搜索工具（基于 Chroma 向量检索）。
+    工厂函数：创建日记语义搜索工具（基于 Chroma 向量检索 + 多维过滤）。
 
     为什么用工厂函数？
     - LangChain 的 @tool 装饰器创建的是全局工具
@@ -91,97 +161,227 @@ def create_diary_search_tool(db: Session, user_id: int):
     RAG 实现说明：
     - 使用 Chroma 向量数据库 + text2vec-base-chinese Embedding 模型
     - 查询时将关键词转为向量，在用户的 Collection 中做余弦相似度检索
+    - 支持多维度过滤：时间范围、标签、关键词，取交集
     - 相比 SQL LIKE, 语义检索能理解"意思"而非仅匹配"字面"
-    - 例如搜索"开心"能匹配到"今天心情很好"、"感到快乐"等语义相近的日记
     """
     @tool
-    def search_diary(query: str) -> str:
-        """搜索用户的历史日记。输入关键词或描述，返回语义最相关的历史日记摘要。
-        用于了解用户过去提到的事件、目标、情绪等上下文信息。"""
+    def search_diary(
+        query: str = "",
+        start_date: str = "",
+        end_date: str = "",
+        tag: str = "",
+    ) -> str:
+        """搜索用户的历史日记。支持多维度查询：
+        - query: 关键词或描述，进行语义搜索
+        - start_date: 开始日期 (YYYY-MM-DD)
+        - end_date: 结束日期 (YYYY-MM-DD)
+        - tag: 标签名称，如"工作"
+        至少提供一个参数。返回匹配的历史日记摘要。"""
         try:
             from app.services.vector_service import search_similar_diaries
 
-            results = search_similar_diaries(
+            # 使用 Chroma 语义检索，top_k=10 多取一些用于后续过滤
+            results = search_similar_diaries( # 此处暂时不理解，需后续深入了解，比如top_k的值的含义
                 user_id=user_id,
-                query=query,
-                top_k=5,
+                query=query or "",
+                top_k=10,
             )
 
+            # 多维度过滤（日期范围 + 标签）
+            results = filter_diary_results(results, start_date=start_date, end_date=end_date, tag=tag)
+
+            # 取前 5 条
+            results = results[:5]
+
             if not results:
-                return f"未找到与「{query}」相关的历史日记。"
+                # 构建查询条件描述
+                conditions = []
+                if query:
+                    conditions.append(query)
+                if start_date:
+                    conditions.append(f"从{start_date}")
+                if end_date:
+                    conditions.append(f"到{end_date}")
+                if tag:
+                    conditions.append(f"标签:{tag}")
+                conditions_str = "、".join(conditions) if conditions else "指定条件"
+                return f"未找到与「{conditions_str}」匹配的历史日记。"
 
-            lines = []
-            for item in results:
-                date_str = item.get("date", "未知日期")
-                content = item.get("content", "")
-                tags = item.get("tags", "")
-                snippet = content[:150] + "..." if len(content) > 150 else content
-
-                tag_part = f" {tags}" if tags else ""
-                lines.append(f"[{date_str}]{tag_part} {snippet}")
-
+            lines = [format_diary_result(item) for item in results]
             return "\n".join(lines)
         except Exception as exc:
             logger.error("日记语义搜索工具执行失败: %s", exc)
-            return "搜索历史日记时出现错误。"
+            return "日记搜索暂时不可用"
 
     return search_diary
 
 
-def create_weather_tool():
+def _fetch_weather_from_api(city: str) -> Optional[str]:
     """
-    工厂函数：创建天气查询工具。
+    同步调用高德地图 API 获取天气数据。
+    成功返回天气描述字符串，失败返回 None。
+    """
+    import httpx
 
-    MCP(Model Context Protocol)概念说明:
-    - MCP 是一种让 AI Agent 调用外部服务的协议
-    - 这里的天气工具是 MCP 概念的简化实现
-    - Agent 可以在分析日记时主动查询天气，丰富回应内容
+    api_key = os.getenv("WEATHER_API_KEY", "")
+    if not api_key:
+        return None
+
+    try:
+        geo_url = "https://restapi.amap.com/v3/geocode/geo"
+        geo_params = {"address": city, "key": api_key, "output": "JSON"}
+
+        with httpx.Client(timeout=5.0) as client:
+            geo_resp = client.get(geo_url, params=geo_params)
+            geo_data = geo_resp.json()
+
+        if geo_data.get("status") != "1" or not geo_data.get("geocodes"):
+            return None
+
+        adcode = geo_data["geocodes"][0].get("adcode")
+
+        weather_url = "https://restapi.amap.com/v3/weather/weatherInfo"
+        weather_params = {"city": adcode, "key": api_key, "extensions": "base", "output": "JSON"}
+
+        with httpx.Client(timeout=5.0) as client:
+            w_resp = client.get(weather_url, params=weather_params)
+            w_data = w_resp.json()
+
+        if w_data.get("status") != "1" or not w_data.get("lives"):
+            return None
+
+        live = w_data["lives"][0]
+        return f"{live.get('weather', '未知')} {live.get('temperature', '--')}°C 湿度{live.get('humidity', '--')}%"
+    except Exception as exc:
+        logger.error("高德 API 调用失败: %s", exc)
+        return None
+
+
+def create_weather_tool(db: Session, user_id: int):
+    """
+    工厂函数：创建天气查询工具（缓存优化版）。
+
+    通过闭包绑定 db 和 user_id, 实现用户数据隔离。
+    工具内部根据 User.last_time 智能选择 Redis 缓存或高德 API:
+    - last_time < 30min → 优先读 Redis 缓存
+    - last_time >= 30min 或为空 → 直接调用高德 API
+    - 缓存未命中或 Redis 不可用 → 回退调用高德 API
+    - API 成功后回填 Redis(有效结果 TTL=3600s,无效结果 TTL=300s)
     """
     @tool
-    def get_weather_info(city: str) -> str:
-        """查询指定城市的天气信息。输入城市名称，返回当前天气描述。
+    def get_weather_info() -> str:
+        """查询当前用户所在城市的天气信息。无需参数，自动获取用户地址，注意考虑地址不存在的情况。
         可以在回应中提及天气，让分析更贴近用户的真实生活场景。"""
         try:
-            # 同步调用天气服务（Agent 工具需要同步接口）
-            # 注意：weather_service.get_weather 是异步的，这里用 httpx 同步版本
-            import httpx
+            from app.models.user import User
 
-            api_key = os.getenv("WEATHER_API_KEY", "")
-            if not api_key:
-                return "天气服务未配置"
+            user = db.query(User).filter(User.UID == user_id).first()
+            if user is None:
+                return "天气查询失败, 未查询到用户名。"
 
-            # 先地理编码
-            geo_url = "https://restapi.amap.com/v3/geocode/geo"
-            geo_params = {"address": city, "key": api_key, "output": "JSON"}
+            address = user.address
+            if not address or not address.strip():
+                return "未设置地址。"
 
-            with httpx.Client(timeout=5.0) as client:
-                geo_resp = client.get(geo_url, params=geo_params)
-                geo_data = geo_resp.json()
+            last_time = user.last_time
+            now = datetime.now()
+            cache_key = f"weather:{user_id}"
 
-            if geo_data.get("status") != "1" or not geo_data.get("geocodes"):
-                return f"无法识别城市「{city}」"
+            # 判断是否应使用缓存
+            if should_use_cache(last_time, now):
+                try:
+                    import redis as sync_redis
+                    redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+                    r = sync_redis.Redis.from_url(redis_url, decode_responses=True, socket_timeout=2)
+                    cached = r.get(cache_key)
+                    if cached:
+                        return cached
+                except Exception as exc:
+                    logger.warning("Redis 缓存读取失败，回退 API: %s", exc)
 
-            adcode = geo_data["geocodes"][0].get("adcode")
+            # 缓存未命中或不应使用缓存 → 调用高德 API
+            result = _fetch_weather_from_api(address)
 
-            # 再查天气
-            weather_url = "https://restapi.amap.com/v3/weather/weatherInfo"
-            weather_params = {"city": adcode, "key": api_key, "extensions": "base", "output": "JSON"}
-
-            with httpx.Client(timeout=5.0) as client:
-                w_resp = client.get(weather_url, params=weather_params)
-                w_data = w_resp.json()
-
-            if w_data.get("status") != "1" or not w_data.get("lives"):
+            if result:
+                # 有效结果，回填 Redis，TTL=3600s
+                try:
+                    import redis as sync_redis
+                    redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+                    r = sync_redis.Redis.from_url(redis_url, decode_responses=True, socket_timeout=2)
+                    r.setex(cache_key, 3600, result)
+                except Exception as exc:
+                    logger.warning("Redis 缓存回填失败: %s", exc)
+                return result
+            else:
+                # 无效结果，短 TTL 缓存避免频繁请求
+                try:
+                    import redis as sync_redis
+                    redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+                    r = sync_redis.Redis.from_url(redis_url, decode_responses=True, socket_timeout=2)
+                    r.setex(cache_key, 300, "天气获取失败")
+                except Exception as exc:
+                    logger.warning("Redis 缓存回填失败: %s", exc)
                 return "天气获取失败"
-
-            live = w_data["lives"][0]
-            return f"{live.get('weather', '未知')} {live.get('temperature', '--')}°C 湿度{live.get('humidity', '--')}%"
 
         except Exception as exc:
             logger.error("天气工具执行失败: %s", exc)
             return "天气查询失败"
 
     return get_weather_info
+
+
+def create_address_tool(db: Session, user_id: int):
+    """
+    工厂函数：创建用户地址获取工具。
+
+    通过闭包绑定 db 和 user_id, 实现用户数据隔离。
+    Agent 可调用此工具获取用户地址，为天气查询等场景提供地理上下文。
+    """
+    @tool
+    def get_user_address() -> str:
+        """获取当前用户的地址信息。无需参数，自动查询当前用户。
+        可用于了解用户所在地区，为天气查询等提供地理上下文。"""
+        try:
+            from app.models.user import User
+
+            user = db.query(User).filter(User.UID == user_id).first()
+            if user is None or not user.address:
+                return "用户未设置地址信息"
+            return user.address
+        except Exception as exc:
+            logger.error("获取用户地址失败: %s", exc)
+            return "获取地址信息失败"
+
+    return get_user_address
+
+
+def create_sentiment_tool(llm: ChatOpenAI):
+    """
+    工厂函数：创建情感分析工具。
+
+    通过闭包绑定 LLM 实例，复用 AIService 的模型配置。
+    Agent 可调用此工具对日记文本进行结构化情感分析。
+    """
+    @tool
+    def analyze_sentiment(text: str) -> str:
+        """分析文本的情感倾向。输入日记文本内容，返回情感倾向（正面/负面/中性）、情感强度（1-5分）和关键情感词。用于更精准地理解用户情绪状态。"""
+        if not text or not text.strip():
+            return "无法分析空内容"
+
+        try:
+            prompt = f"""请对以下文本进行情感分析，严格按照以下格式输出：
+情感倾向：[正面/负面/中性]
+情感强度：[1-5]（1=很弱，5=很强）
+关键情感词：[词1, 词2, ...]（最多5个）
+
+文本：{text}"""
+            response = llm.invoke(prompt)
+            return response.content
+        except Exception as exc:
+            logger.error("情感分析工具执行失败: %s", exc)
+            return "情感分析暂时不可用"
+
+    return analyze_sentiment
 
 
 # ╔══════════════════════════════════════════════════════════════╗
@@ -198,13 +398,13 @@ class AIService:
     └──────────────┘     └──────────────┘      └──────┬──────┘
                                                      │
                                               ┌──────┴──────┐
-                                              │  需要工具？   │
+                                              │  需要工具？  │
                                               └──────┬──────┘
                                            ┌────Yes──┴──No────┐
                                            ▼                   ▼
                                     ┌─────────────┐    ┌──────────────┐
                                     │ 调用工具     │    │ 直接生成回应  │
-                                    │ (搜索/天气)  │    └──────────────┘
+                                    │             │    └──────────────┘
                                     └──────┬──────┘
                                            │
                                            ▼
@@ -244,7 +444,7 @@ class AIService:
         # 校验必要配置
         if not self._api_key:
             raise AIServiceUnavailableError(
-                "AI 服务未配置：缺少 API Key。请在「模型管理」中配置模型，或设置环境变量 LLM_API_KEY。"
+                "AI 服务未配置：缺少 API Key。请在「模型管理」中配置模型, 或设置环境变量 LLM_API_KEY。"
             )
 
         # 构建 LLM 实例（懒初始化，此时不会真正连接）
@@ -260,7 +460,7 @@ class AIService:
         """
         构建 ChatOpenAI 实例。
 
-        为什么用 ChatOpenAI？
+        为什么用 ChatOpenAI ?
         - LangChain 的 ChatOpenAI 兼容所有 OpenAI API 格式的服务
         - DeepSeek、通义千问、LM Studio 等都提供 OpenAI 兼容接口
         - 只需修改 base_url 即可切换不同的 LLM 提供商
@@ -268,7 +468,7 @@ class AIService:
         kwargs = {
             "api_key": self._api_key,
             "model": self._model,
-            "temperature": 0.7,
+            "temperature": 0.7,     # 温度参数
             "max_tokens": 300,      # 日记回应不需要太长
         }
         if self._base_url:
@@ -298,7 +498,7 @@ class AIService:
         将历史日记格式化为摘要文本。
 
         :param entries: 日记列表
-        :param exclude_id: 要排除的日记 ID（通常是当前日记，避免重复）
+        :param exclude_id: 要排除的日记 ID(通常是当前日记，避免重复)
         :return: 格式化的历史摘要
         """
         if not entries:
@@ -455,7 +655,9 @@ class AIService:
     def _run_agent(self, context: dict, db: Session, user_id: int) -> tuple[str, dict, str]:
         tools = [
             create_diary_search_tool(db, user_id),
-            create_weather_tool(),
+            create_weather_tool(db, user_id),
+            create_sentiment_tool(self._llm),
+            create_address_tool(db, user_id),
         ]
 
         llm_with_tools = self._llm.bind_tools(tools)
@@ -519,7 +721,7 @@ class AIService:
 
 
 # ╔══════════════════════════════════════════════════════════════╗
-# ║  工厂函数：根据用户配置创建 AIService 实例                       ║
+# ║  工厂函数：根据用户配置创建 AIService 实例                      ║
 # ╚══════════════════════════════════════════════════════════════╝
 
 def create_ai_service_for_user(

@@ -43,6 +43,8 @@ class DiaryEntryResponse(BaseModel):
     weather: Optional[str] = None
     AI_ans: Optional[str] = None
     create_time: Optional[datetime] = None
+    published_to_column: bool = False
+    publish_time: Optional[datetime] = None
     tags: List[TagResponse] = []
 
     model_config = {"from_attributes": True}

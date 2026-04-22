@@ -4,17 +4,30 @@ FastAPI 应用入口
 """
 
 import os
+from contextlib import asynccontextmanager
 from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 
+from app.core.redis import init_redis, close_redis
+
 # 定位 .env：无论从哪个目录启动，都能找到 backend/.env
 _env_path = Path(__file__).resolve().parent.parent / ".env"
 load_dotenv(dotenv_path=_env_path)
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """管理应用生命周期：启动时初始化 Redis 连接池，关闭时释放资源"""
+    await init_redis()
+    yield
+    await close_redis()
+
+
 # 创建 FastAPI 应用实例
 app = FastAPI(
+    lifespan=lifespan,
     title="个人网站 AI 日记系统",
     description="支持多用户的个人网站平台，核心功能为 AI 日记系统",
     version="1.0.0",
@@ -43,6 +56,7 @@ from app.routers.weather import router as weather_router
 from app.routers.tags import router as tags_router
 from app.routers.models import router as models_router
 from app.routers.analysis import router as analysis_router
+from app.routers.public_column import router as public_column_router
 
 # 启动时自动创建数据库表
 Base.metadata.create_all(bind=engine)
@@ -72,3 +86,5 @@ app.include_router(tags_router, prefix="/tags", tags=["标签"])
 app.include_router(models_router, prefix="/models", tags=["模型管理"])
 # 注册分析路由
 app.include_router(analysis_router, prefix="/analysis", tags=["AI 分析"])
+# 注册公开专栏路由
+app.include_router(public_column_router, prefix="/public/column", tags=["公开专栏"])
