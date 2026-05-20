@@ -44,12 +44,22 @@ const router = createRouter({
       meta: { requiresAuth: true },
     },
     {
+      path: '/token-dashboard',
+      component: () => import('@/pages/TokenDashboardPage.vue'),
+      meta: { requiresAuth: true },
+    },
+    {
       path: '/help',
       component: () => import('@/pages/HelpPage.vue'),
     },
     {
       path: '/column',
       component: () => import('@/pages/ColumnPage.vue'),
+    },
+    {
+      path: '/admin',
+      component: () => import('@/pages/AdminPage.vue'),
+      meta: { requiresAuth: true, requiresAdmin: true },
     },
     {
       path: '/:pathMatch(.*)*',
@@ -65,6 +75,9 @@ router.beforeEach((to) => {
     return '/login'
   }
   if (to.meta.requiresGuest && auth.isAuthenticated) {
+    return '/diary'
+  }
+  if (to.meta.requiresAdmin && auth.user?.role !== 'admin') {
     return '/diary'
   }
 })

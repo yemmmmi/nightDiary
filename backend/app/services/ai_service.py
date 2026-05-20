@@ -1,6 +1,6 @@
 """
-AI 分析服务模块 — ReAct Agent 架构
-====================================
+AI 分析服务模块 — ReAct Agent + Multi-Agent 架构
+==================================================
 
 核心设计思路：
 1. 每个用户可以配置自己的 LLM 模型(ModelProvider),AI 服务优先使用用户配置的模型
@@ -8,12 +8,14 @@ AI 分析服务模块 — ReAct Agent 架构
 3. 使用 LangChain 的 ReAct Agent 模式，支持工具调用（天气查询、历史日记检索）
 4. 标签作为 Few-shot 上下文注入 Prompt, 帮助 AI 更好地理解日记内容
 5. LLM 不可用时抛出 AIServiceUnavailableError, 由路由层返回 503
+6. 满足条件时路由到 LangGraph Multi-Agent 流程（Supervisor + Worker Agents）
+7. Multi-Agent 不可用或失败时降级到现有 ReAct/Chain 行为
 
 模块结构：
 - AIServiceUnavailableError: 自定义异常, LLM 不可用时抛出
 - DiarySearchTool: LangChain Tool, 用于检索用户历史日记(RAG)
 - WeatherTool: LangChain Tool, 用于查询天气信息(MCP 概念的简化实现）
-- AIService: 主服务类，封装 ReAct Agent 的构建和调用逻辑
+- AIService: 主服务类，封装 ReAct Agent 和 Multi-Agent 的构建和调用逻辑
 """
 
 import logging
@@ -29,6 +31,14 @@ from sqlalchemy.orm import Session
 
 from app.models.diary import DiaryEntry
 from app.models.tag import Tag
+
+# Multi-Agent 可用性检测（langgraph 可能未安装）
+_MULTI_AGENT_AVAILABLE = False
+try:
+    from langgraph.graph import StateGraph  # noqa: F401
+    _MULTI_AGENT_AVAILABLE = True
+except ImportError:
+    pass
 
 logger = logging.getLogger(__name__)
 
@@ -57,14 +67,30 @@ class AIServiceUnavailableError(Exception):
 SYSTEM_PROMPT = """你是"夜记助手"，一个心理陪伴助手，调用工具的目的是为了
 更好地理解用户处境或提供客观建议、减少人机感。你的输出应控制在50-150字的中文。"""
 
-# Agent 模式专用 System Prompt（多了工具说明）
+# Agent 模式专用 System Prompt（多了工具说明 + Few-shot 示例）
 AGENT_SYSTEM_PROMPT = SYSTEM_PROMPT + """
 可用工具:
 - search_diary(搜索历史日记，支持关键词/日期/标签多维度查询)
 - get_weather_info(查天气，自动获取用户地址)
 - analyze_sentiment(分析文本情感倾向、强度和关键词)
 - get_user_address(获取用户地址信息)
-不需要就直接回应。"""
+
+何时调用 search_diary（仅当日记中出现回溯性表述时才调用）:
+✓ "昨天也是这样加班" → 调用 search_diary(query="加班")
+✓ "上周提到的那个项目" → 调用 search_diary(query="项目")
+✓ "之前写过类似的心情" → 调用 search_diary(query="心情")
+✓ "和前几天一样难过" → 调用 search_diary(query="难过")
+✗ "今天天气真好" → 不调用，没有回溯历史的意图
+✗ "晚饭吃了火锅" → 不调用，没有提及过去
+不需要就直接回应，不要强行调用工具。"""
+
+# 触发 Agent 模式的时间回溯关键词
+_TEMPORAL_KEYWORDS = (
+    "昨天", "前天", "上周", "上个月", "去年", "之前", "以前", "过去",
+    "前几天", "前段时间", "那天", "那时", "那次", "上次", "曾经",
+    "一直", "又", "还是", "老是", "总是", "每次", "再次", "重复",
+    "和之前一样", "跟上次", "像上回",
+)
 
 # 用户消息模板 — 精简，去掉空区块
 USER_PROMPT_TEMPLATE = """日记：{current_content}
@@ -390,33 +416,32 @@ def create_sentiment_tool(llm: ChatOpenAI):
 
 class AIService:
     """
-    AI 分析服务 — ReAct Agent 架构
+    AI 分析服务 — ReAct Agent + Multi-Agent 架构
 
     工作流程：
-    ┌──────────────┐     ┌──────────────┐      ┌─────────────┐
-    │ 读取日记+标签 │ ──→ │ 构建 Prompt   │ ──→ │ ReAct Agent │
-    └──────────────┘     └──────────────┘      └──────┬──────┘
-                                                     │
-                                              ┌──────┴──────┐
-                                              │  需要工具？  │
-                                              └──────┬──────┘
-                                           ┌────Yes──┴──No────┐
-                                           ▼                   ▼
-                                    ┌─────────────┐    ┌──────────────┐
-                                    │ 调用工具     │    │ 直接生成回应  │
-                                    │             │    └──────────────┘
-                                    └──────┬──────┘
-                                           │
-                                           ▼
-                                    ┌──────────────┐
-                                    │ 综合生成回应  │
-                                    └──────────────┘
+    ┌──────────────┐     ┌──────────────┐      ┌─────────────────────┐
+    │ 读取日记+标签 │ ──→ │ 路由决策      │ ──→ │ Multi-Agent / ReAct │
+    └──────────────┘     └──────────────┘      └──────────┬──────────┘
+                                                          │
+                                                   ┌──────┴──────┐
+                                                   │  生成回应    │
+                                                   └─────────────┘
+
+    路由决策逻辑（优先级从高到低）：
+    1. Multi-Agent 模式：langgraph 可用 + 功能开关启用 + db/user_id 提供
+    2. Agent 模式：db/user_id 提供 + 日记含时间回溯关键词
+    3. Chain 模式：其他情况
+
+    降级策略：
+    - Multi-Agent 执行失败 → 回退到 Agent/Chain 模式
+    - Agent/Chain 执行失败 → 返回 FALLBACK_FEEDBACK
+    - 所有 AI 组件不可用 → 返回 FALLBACK_FEEDBACK
 
     关键设计决策：
     1. 优先使用用户配置的 ModelProvider(base_url + model_key)
     2. 回退到系统环境变量配置(LLM_BASE_URL + LLM_API_KEY)
     3. 工具通过工厂函数创建，每次调用绑定当前用户的 db session(数据隔离)
-    4. 使用 LangChain 的 create_react_agent 或手动 chain 实现 ReAct 循环
+    4. Multi-Agent 通过 LangGraph_State 传递 user_id，确保数据隔离
     """
 
     def __init__(
@@ -569,10 +594,14 @@ class AIService:
 
         流程：
         1. 构建上下文(标签 Few-shot + 历史摘要 + 天气)
-        2. 如果提供了 db 和 user_id, 创建 ReAct Agent(带工具)
-        3. 否则使用简单 Chain(Prompt → LLM → 输出)
-        4. 调用 LLM 生成分析结果
-        5. 返回结果字典(包含分析文本和 Token 消耗)
+        2. 路由决策：Multi-Agent / Agent / Chain
+        3. 调用对应模式生成分析结果
+        4. 返回结果字典(包含分析文本和 Token 消耗)
+
+        路由优先级：
+        - Multi-Agent：langgraph 可用 + 功能开关启用 + db/user_id 提供
+        - Agent：db/user_id 提供 + 日记含时间回溯关键词
+        - Chain：其他情况
 
         :param current_entry: 当前要分析的日记条目
         :param recent_entries: 最近 7 天的日记列表(含当前条目)
@@ -596,15 +625,31 @@ class AIService:
                 "weather_info": weather_info,
             }
 
-            # ── Step 2: 智能选择执行模式 ──
-            # 短日记（< 200 字）且历史少于 3 篇 → Chain 模式（省 token）
-            # 长日记或历史丰富 → Agent 模式（可调用工具检索）
-            content_len = len(current_entry.content or "")
-            history_count = len([e for e in recent_entries if e.NID != current_entry.NID])
-            use_agent = (db is not None and user_id is not None
-                         and (content_len >= 200 or history_count >= 3))
+            # ── Step 2: 智能路由决策 ──
+            content = current_entry.content or ""
+            has_temporal_ref = any(kw in content for kw in _TEMPORAL_KEYWORDS)
 
-            if use_agent:
+            # 路由优先级：Multi-Agent > Agent > Chain
+            use_multi_agent = self._should_use_multi_agent(db, user_id)
+            use_agent = (db is not None and user_id is not None and has_temporal_ref)
+
+            if use_multi_agent:
+                # 尝试 Multi-Agent 流程，失败时降级到 Agent/Chain
+                try:
+                    result_text, token_info, thk_log = self._run_multi_agent(
+                        current_entry, db, user_id
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        "Multi-Agent 执行失败，降级到 %s 模式: %s",
+                        "Agent" if use_agent else "Chain",
+                        exc,
+                    )
+                    if use_agent:
+                        result_text, token_info, thk_log = self._run_agent(context, db, user_id)
+                    else:
+                        result_text, token_info, thk_log = self._run_chain(context)
+            elif use_agent:
                 result_text, token_info, thk_log = self._run_agent(context, db, user_id)
             else:
                 result_text, token_info, thk_log = self._run_chain(context)
@@ -636,6 +681,183 @@ class AIService:
                 "output_tokens": 0,
                 "thk_log": f"[降级] LLM 调用失败: {str(exc)}",
             }
+
+    # ──────────────────────────────────────────────────────────
+    # Multi-Agent 路由与执行
+    # ──────────────────────────────────────────────────────────
+
+    def _should_use_multi_agent(self, db: Optional[Session], user_id: Optional[int]) -> bool:
+        """
+        判断是否应使用 Multi-Agent 流程。
+
+        条件（全部满足时启用）：
+        1. langgraph 库已安装（_MULTI_AGENT_AVAILABLE = True）
+        2. 环境变量 MULTI_AGENT_ENABLED 不为 "false"（默认启用）
+        3. db 和 user_id 均已提供
+
+        :return: True 表示应使用 Multi-Agent 流程
+        """
+        if not _MULTI_AGENT_AVAILABLE:
+            return False
+
+        # 功能开关：环境变量控制，默认启用
+        enabled = os.getenv("MULTI_AGENT_ENABLED", "true").lower()
+        if enabled in ("false", "0", "no", "off"):
+            return False
+
+        if db is None or user_id is None:
+            return False
+
+        return True
+
+    def _run_multi_agent(
+        self,
+        current_entry: DiaryEntry,
+        db: Session,
+        user_id: int,
+    ) -> tuple[str, dict, str]:
+        """
+        执行 Multi-Agent 流程。
+
+        通过 LangGraph 状态图协调 Supervisor + Worker Agents：
+        1. 初始化 MultiAgentState（包含 user_id 用于数据隔离）
+        2. 加载 Episodic Memory 和 Long-Term Memory 上下文
+        3. 构建并运行 LangGraph 状态图
+        4. 从最终状态提取结果
+
+        Worker Agent 通过 LangGraph_State 接收 user_id，
+        并将其传递给所有数据访问调用（Requirement 22.5）。
+
+        :param current_entry: 当前日记条目
+        :param db: 数据库会话
+        :param user_id: 用户 ID（通过 state 传递给所有 Worker）
+        :return: (result_text, token_info, thk_log)
+        :raises Exception: Multi-Agent 执行失败时抛出
+        """
+        import asyncio
+
+        from app.agents.graph import MultiAgentGraphBuilder
+        from app.agents.supervisor import SupervisorAgent
+        from app.agents.empathy_agent import empathy_agent_node
+        from app.agents.retrieval_agent import retrieval_agent
+        from app.agents.insight_agent import insight_agent
+        from app.memory.long_term import LongTermMemory
+
+        diary_content = current_entry.content or ""
+        diary_nid = current_entry.NID if hasattr(current_entry, "NID") else 0
+
+        logger.info(
+            "Multi-Agent 流程启动: user_id=%d, content_len=%d",
+            user_id, len(diary_content),
+        )
+
+        # ── Step 1: 加载记忆上下文 ──
+        # Episodic Memory（Redis，降级安全）
+        # 注意：在 FastAPI 同步路由中调用异步 EpisodicMemory 会有事件循环冲突
+        # 这里直接跳过，让 Worker Agent 通过 state 中的空列表处理
+        episodic_context: list = []
+        try:
+            import redis as sync_redis
+            redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+            r = sync_redis.Redis.from_url(redis_url, decode_responses=True, socket_timeout=2)
+            # 尝试从 Redis 直接读取（同步方式）
+            key = f"memory:episodic:{user_id}"
+            raw_entries = r.zrevrangebyscore(key, "+inf", "-inf", start=0, num=5)
+            if raw_entries:
+                import json
+                for raw in raw_entries:
+                    try:
+                        episodic_context.append(json.loads(raw))
+                    except (json.JSONDecodeError, TypeError):
+                        pass
+        except Exception as exc:
+            logger.warning("Episodic Memory 加载失败（降级跳过）: %s", exc)
+
+        # Long-Term Memory（MySQL，降级安全）
+        long_term_profile: dict = {}
+        try:
+            ltm = LongTermMemory()
+            profile = ltm.get_profile(db, user_id)
+            long_term_profile = profile.model_dump()
+        except Exception as exc:
+            logger.warning("Long-Term Memory 加载失败（降级跳过）: %s", exc)
+
+        # ── Step 2: 构建初始状态 ──
+        # user_id 通过 state 传递给所有 Worker Agent（Requirement 22.5）
+        initial_state = {
+            "diary_content": diary_content,
+            "user_id": user_id,
+            "diary_nid": diary_nid,
+            "intent": "",
+            "token_budget": 0,
+            "activated_agents": [],
+            "episodic_context": episodic_context,
+            "long_term_profile": long_term_profile,
+            "compressed_history": "",
+            "retrieval_context": "",
+            "empathy_response": "",
+            "insight_response": "",
+            "final_response": "",
+            "total_tokens_used": 0,
+            "agent_mode": "multi_agent",
+            "thk_log": "",
+            "cache_hit_tokens": 0,
+            "cache_miss_tokens": 0,
+            "output_tokens": 0,
+            "errors": [],
+        }
+
+        # ── Step 3: 构建 LangGraph 状态图 ──
+        supervisor = SupervisorAgent(llm=self._llm)
+
+        builder = MultiAgentGraphBuilder()
+        builder.set_supervisor(
+            supervisor.classify_intent,
+            supervisor.synthesize_response,
+        )
+        builder.add_worker("empathy", empathy_agent_node)
+        builder.add_worker("retrieval", retrieval_agent)
+        builder.add_worker("insight", insight_agent)
+
+        graph = builder.compile()
+
+        # ── Step 4: 执行状态图 ──
+        final_state = graph.invoke(initial_state)
+
+        # ── Step 5: 提取结果 ──
+        final_response = final_state.get("final_response", "")
+        errors = final_state.get("errors", [])
+        activated_agents = final_state.get("activated_agents", [])
+        intent = final_state.get("intent", "unknown")
+
+        # 如果没有最终回应（所有 Worker 都失败了），返回 FALLBACK
+        if not final_response or not final_response.strip():
+            logger.error("Multi-Agent 所有 Worker 失败，使用 FALLBACK_FEEDBACK")
+            final_response = FALLBACK_FEEDBACK
+
+        # 构建 thk_log
+        thk_log_parts = [
+            f"[Multi-Agent] intent={intent}, agents={activated_agents}",
+        ]
+        if errors:
+            thk_log_parts.append(f"[Errors] {'; '.join(errors)}")
+        thk_log = "\n".join(thk_log_parts)
+
+        # Token 信息（从 state 的 operator.add reducer 累计值中读取）
+        total_tokens = final_state.get("total_tokens_used", 0)
+        token_info = {
+            "total_tokens": total_tokens,
+            "cache_hit_tokens": final_state.get("cache_hit_tokens", 0),
+            "cache_miss_tokens": final_state.get("cache_miss_tokens", 0),
+            "output_tokens": final_state.get("output_tokens", 0),
+        }
+
+        logger.info(
+            "Multi-Agent 流程完成: intent=%s, agents=%s, errors=%d, response_len=%d",
+            intent, activated_agents, len(errors), len(final_response),
+        )
+
+        return final_response, token_info, thk_log
 
     def _run_chain(self, context: dict) -> tuple[str, dict, str]:
         prompt = ChatPromptTemplate.from_messages([

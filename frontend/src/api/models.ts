@@ -32,4 +32,9 @@ export const modelsApi = {
   delete: async (modelId: number): Promise<void> => {
     await http.delete(`/models/${modelId}`)
   },
+
+  activate: async (modelId: number): Promise<ModelResponse> => {
+    const res = await http.put(`/models/${modelId}/activate`)
+    return res.data
+  },
 }

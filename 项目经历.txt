@@ -1,0 +1,67 @@
+项目经历：夜记 — AI 智能日记管理系统
+=====================================
+
+【技术栈】
+前端：Vue 3 + TypeScript + Pinia + Vue Router + Axios + Tailwind CSS + Vite
+后端：Python + FastAPI + SQLAlchemy + Pydantic + LangChain + LangGraph
+数据库：MySQL 8.0 + Chroma 向量数据库 + Redis 7.x
+AI/NLP：DeepSeek/OpenAI（兼容接口） + shibing624/text2vec-base-chinese（Embedding） + BAAI/bge-reranker-base（Re-rank） + jieba 分词 + rank-bm25
+其他：JWT 认证 + bcrypt 加密 + Fernet 对称加密 + 高德地图 API + Hypothesis 属性测试
+
+
+【项目描述】
+一个支持多用户的全栈 AI 日记管理平台。用户可记录日记、管理标签、配置个人 LLM 模型，系统通过 ReAct Agent 架构对日记内容进行深度分析并生成个性化回应。项目涵盖企业级 RAG 检索管线、Redis 多层缓存防护体系、公开日记专栏、天气自动获取与缓存预热等功能模块，前后端完全分离，数据按用户严格隔离。
+
+
+【核心职责与实现】
+
+1. 设计并实现 ReAct Agent 架构的 AI 分析引擎：集成 LangChain 工具链（RAG 日记语义搜索、天气查询、情感分析、用户地址获取），
+采用工厂函数 + 闭包模式绑定用户上下文实现数据隔离，根据日记内容是否包含 25 个时间回溯关键词智能切换 Chain/Agent 模式，
+Chain 模式仅需 1 次 LLM 调用（约 400-600 tokens），Agent 模式需 2 次 LLM 调用 + 工具执行（约 1200-1800 tokens），
+对于不涉及历史回溯的日常日记（占多数场景）可节省约 60% 的 Token 消耗
+
+2. 构建企业级 RAG 检索管线：使用 RecursiveCharacterTextSplitter 对日记进行 Chunk 切分（512 字符/50 字符重叠），
+实现语义检索（Chroma 向量余弦相似度，召回 Top-20）+ BM25 关键词检索（jieba 分词 + rank-bm25，召回 Top-20）双路并行召回，
+通过 RRF（Reciprocal Rank Fusion, k=60）算法融合去重约 30-40 个候选 chunk，
+最终使用 bge-reranker-base CrossEncoder 模型精排输出 Top-5，相比升级前单路整篇召回，检索粒度从篇级细化到段落级，
+候选池从 5 篇扩大到 40 个 chunk 再精排，显著提升上下文相关性
+
+3. 设计并实现 Redis 多层缓存防护体系：采用 Cache-Aside 旁路缓存策略，公开专栏列表/详情接口缓存命中时响应耗时从
+MySQL 查询的 50-200ms 降至 Redis 读取的 1-5ms（提升约 10-40 倍），实现缓存穿透防护（空值标记 Null Cache, TTL=60s）、
+缓存击穿防护（基于 SET NX EX + Lua 原子释放的分布式锁，TTL=5s）、缓存雪崩防护（TTL 随机偏移：列表 300±120s，详情 600±60s），
+Redis 不可用时全链路降级为直查 MySQL，保障核心业务不中断
+
+4. 实现基于 Redis Sorted Set 的滑动窗口 IP 限流器：每次请求先 ZREMRANGEBYSCORE 清理窗口外记录，
+再 ZCARD 统计窗口内请求数，超过阈值（60次/分钟）返回 HTTP 429，
+响应头携带 X-RateLimit-Limit/Remaining/Reset 信息，Redis 异常时降级放行
+
+5. 设计天气缓存预热与智能刷新机制：用户登录后前端 fire-and-forget 调用 POST /weather/preheat 预热天气缓存
+（Redis key: weather:{uid}, TTL=1h），Agent 天气工具根据 User.last_time 30 分钟阈值智能选择 Redis 缓存（<1ms）或高德 API
+（地理编码 + 天气查询两次 HTTP 调用，耗时约 500ms-2s），缓存命中时可将天气获取环节耗时降低 99%，
+用户修改地址时自动失效旧缓存并异步预热新地址天气
+
+6. 实现前端 Token 存储分流与"记住我"功能：根据用户勾选状态将 JWT Token 存入 localStorage（持久化）或 sessionStorage（会话级），
+统一封装 getToken/setToken/clearAuth 函数兼容双 Storage 读写，HTTP 拦截器和路由守卫同步适配，登出时清除双端存储
+
+7. 搭建 Vue 3 + TypeScript 前端架构：基于 Pinia 管理全局认证状态，Vue Router 实现路由守卫（requiresAuth/requiresGuest），
+Axios 拦截器自动附加 Bearer Token 并处理 401 跳转，包含日记编辑器、AI 分析面板、天气组件、公开专栏等 7 个核心组件和 11 个页面
+
+8. 设计用户可配置的多模型管理系统：支持用户注册 DeepSeek、OpenAI、通义千问等 OpenAI 兼容接口的 LLM 模型，
+API Key 使用 Fernet 对称加密存储，任何接口不返回原始 Key，AIService 通过工厂函数根据用户配置动态创建 LLM 实例
+
+9. 使用 Hypothesis 框架编写属性测试：每条属性运行 100 次随机输入，覆盖 RAG Chunk 切分上界、BM25 索引一致性、
+RRF 融合排序正确性、Redis 缓存穿透/击穿/雪崩防护、分布式锁互斥性、限流器滑动窗口准确性、天气缓存决策阈值一致性等核心属性，
+共计 40+ 条正确性属性，Redis 集成验证脚本 32/32 全部通过
+
+
+【项目亮点】
+
+1. RAG 架构从单路语义召回升级为"多路召回 + RRF 融合 + CrossEncoder 重排序"的企业级管线，并提供 Hit Rate / MRR / Recall 三项指标的命令行评估工具，支持四种模式对比调优
+
+2. Redis 缓存层实现穿透、击穿、雪崩三重防护 + 全链路降级容错，分布式锁采用 Lua 脚本原子释放防止误删，所有缓存操作失败仅记录日志不阻塞主流程
+
+3. ReAct Agent 工具采用工厂函数 + 闭包模式，通过 db Session 和 user_id 参数绑定用户上下文，从架构层面保证多用户数据隔离，避免全局状态导致的隐私泄露风险
+
+4. 天气服务实现"登录预热 → 缓存优先 → API 回退 → 地址变更自动失效"的完整缓存生命周期管理，无效地址结果以短 TTL（5分钟）缓存避免重复判断
+
+5. 前后端完全分离，后端 FastAPI 通过 Lifespan 管理 Redis 连接池生命周期，前端通过 Pinia + 路由守卫 + Axios 拦截器构建完整的认证链路，支持 Token 双 Storage 分流

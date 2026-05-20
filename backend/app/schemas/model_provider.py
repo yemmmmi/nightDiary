@@ -2,7 +2,6 @@
 模型提供商相关 Pydantic Schema
 """
 
-from datetime import datetime
 from typing import Optional
 from pydantic import BaseModel, field_validator
 
@@ -38,7 +37,6 @@ class ModelResponse(BaseModel):
     model_name: str
     is_active: bool
     base_url: Optional[str]
-    create_time: Optional[datetime]
     # model_key_encrypted 不返回，防止泄露
 
     model_config = {"from_attributes": True}

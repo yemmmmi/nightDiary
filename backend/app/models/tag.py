@@ -29,6 +29,7 @@ class Tag(Base):
     color: Mapped[Optional[str]] = mapped_column("color", String(20), nullable=True, default="#6B7280")
     creator: Mapped[Optional[str]] = mapped_column("creator", String(50), nullable=True)
     usage_count: Mapped[int] = mapped_column("Usagecnt", Integer, nullable=False, default=0)
+    status: Mapped[str] = mapped_column("status", String(20), nullable=False, default="approved")
     create_time: Mapped[Optional[datetime]] = mapped_column("create_time", DateTime, default=datetime.utcnow)
 
     diary_entries: Mapped[List["DiaryEntry"]] = relationship(

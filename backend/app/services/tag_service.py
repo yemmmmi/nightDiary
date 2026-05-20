@@ -10,16 +10,20 @@ from sqlalchemy import desc
 from app.models.tag import Tag
 
 
-def get_tags(db: Session, sort_by_usage: bool = True) -> list[Tag]:
+def get_tags(db: Session, sort_by_usage: bool = True, include_pending: bool = False) -> list[Tag]:
     """
-    获取所有标签列表
+    获取标签列表
 
     :param db: 数据库会话
     :param sort_by_usage: True 时按引用次数倒序，False 时按创建时间倒序
+    :param include_pending: True 时包含待审核标签，False 时仅返回已审核标签
     :return: Tag 列表
     """
     order = desc(Tag.usage_count) if sort_by_usage else desc(Tag.create_time)
-    return db.query(Tag).order_by(order).all()
+    query = db.query(Tag)
+    if not include_pending:
+        query = query.filter(Tag.status == "approved")
+    return query.order_by(order).all()
 
 
 def get_tag(db: Session, tag_id: int) -> Optional[Tag]:
@@ -27,7 +31,7 @@ def get_tag(db: Session, tag_id: int) -> Optional[Tag]:
     return db.query(Tag).filter(Tag.id == tag_id).first()
 
 
-def create_tag(db: Session, tag_name: str, color: str, creator: str) -> Tag:
+def create_tag(db: Session, tag_name: str, color: str, creator: str, status: str = "pending") -> Tag:
     """
     创建标签，校验名称唯一性
 
@@ -35,6 +39,7 @@ def create_tag(db: Session, tag_name: str, color: str, creator: str) -> Tag:
     :param tag_name: 标签名（已通过 schema 校验长度）
     :param color: 颜色值
     :param creator: 创建者用户名
+    :param status: 标签状态 approved/pending
     :return: 新创建的 Tag 对象
     :raises ValueError: 标签名已存在
     """
@@ -42,7 +47,7 @@ def create_tag(db: Session, tag_name: str, color: str, creator: str) -> Tag:
     if existing:
         raise ValueError("标签名已存在")
 
-    tag = Tag(tag_name=tag_name, color=color, creator=creator)
+    tag = Tag(tag_name=tag_name, color=color, creator=creator, status=status)
     db.add(tag)
     db.commit()
     db.refresh(tag)
@@ -97,3 +102,19 @@ def delete_tag(db: Session, tag_id: int) -> bool:
     db.delete(tag)
     db.commit()
     return True
+
+
+def approve_tag(db: Session, tag_id: int) -> Optional[Tag]:
+    """审核通过标签"""
+    tag = get_tag(db, tag_id)
+    if tag is None:
+        return None
+    tag.status = "approved"
+    db.commit()
+    db.refresh(tag)
+    return tag
+
+
+def reject_tag(db: Session, tag_id: int) -> bool:
+    """拒绝标签（直接删除）"""
+    return delete_tag(db, tag_id)

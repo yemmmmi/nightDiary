@@ -29,6 +29,15 @@ def create_model(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    # 注册前验证 API Key + Base URL 连通性
+    validation_error = model_service.validate_model_connection(
+        base_url=body.base_url,
+        model_key=body.model_key,
+        model_name=body.model_name,
+    )
+    if validation_error:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=validation_error)
+
     return model_service.create_model(
         db=db,
         user_id=current_user.UID,
@@ -56,6 +65,18 @@ def update_model(
     if updated is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="模型不存在")
     return updated
+
+
+@router.put("/{model_id}/activate", response_model=ModelResponse, summary="激活模型（同时停用其他模型）")
+def activate_model(
+    model_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    activated = model_service.activate_model(db=db, user_id=current_user.UID, model_id=model_id)
+    if activated is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="模型不存在")
+    return activated
 
 
 @router.delete("/{model_id}", status_code=status.HTTP_204_NO_CONTENT, summary="删除模型")

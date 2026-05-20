@@ -1,84 +1,63 @@
 <template>
-  <div class="max-w-3xl mx-auto p-6">
-    <div class="flex items-center justify-between mb-6">
-      <h1 class="text-2xl font-bold text-gray-800">模型管理</h1>
-      <router-link to="/diary" class="text-sm text-blue-600 hover:underline">← 返回日记</router-link>
-    </div>
+  <div class="min-h-screen py-12 px-6" style="background-color: var(--bg-base);">
+    <div class="max-w-3xl mx-auto">
+      <div class="flex items-center justify-between mb-8">
+        <h1 class="text-2xl font-bold font-serif" style="color: var(--text-primary);">模型管理</h1>
+        <router-link to="/diary" class="text-sm transition" style="color: var(--accent);">← 返回日记</router-link>
+      </div>
 
-    <!-- 注册新模型 -->
-    <div class="bg-white rounded-xl shadow p-5 mb-6">
-      <h2 class="text-sm font-semibold text-gray-700 mb-3">注册新模型</h2>
-      <form @submit.prevent="handleCreate" class="space-y-3">
-        <div class="grid grid-cols-2 gap-3">
-          <div>
-            <label class="block text-xs text-gray-500 mb-1">模型名称</label>
-            <input
-              v-model="form.model_name"
-              type="text"
-              placeholder="如 deepseek-chat"
-              class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-            />
+      <!-- 注册新模型 -->
+      <div class="glass-card rounded-2xl p-6 mb-6">
+        <h2 class="text-sm font-semibold mb-4" style="color: var(--text-secondary);">注册新模型</h2>
+        <form @submit.prevent="handleCreate" class="space-y-4">
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="block text-xs mb-1" style="color: var(--text-faint);">模型名称</label>
+              <input v-model="form.model_name" type="text" placeholder="如 deepseek-chat" class="input-theme" />
+            </div>
+            <div>
+              <label class="block text-xs mb-1" style="color: var(--text-faint);">Base URL</label>
+              <input v-model="form.base_url" type="url" required placeholder="https://api.deepseek.com" class="input-theme" />
+            </div>
           </div>
           <div>
-            <label class="block text-xs text-gray-500 mb-1">Base URL</label>
-            <input
-              v-model="form.base_url"
-              type="url"
-              required
-              placeholder="https://api.deepseek.com"
-              class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-            />
+            <label class="block text-xs mb-1" style="color: var(--text-faint);">API Key</label>
+            <input v-model="form.model_key" type="password" required placeholder="sk-..." autocomplete="off" class="input-theme" />
           </div>
-        </div>
-        <div>
-          <label class="block text-xs text-gray-500 mb-1">API Key</label>
-          <input
-            v-model="form.model_key"
-            type="password"
-            required
-            placeholder="sk-..."
-            autocomplete="off"
-            class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-          />
-        </div>
-        <button
-          type="submit"
-          :disabled="!form.model_key || !form.base_url || creating"
-          class="px-5 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-40 transition text-sm"
-        >
-          {{ creating ? '注册中...' : '注册模型' }}
-        </button>
-      </form>
-      <p v-if="error" class="mt-2 text-red-500 text-sm">{{ error }}</p>
-    </div>
+          <button type="submit" :disabled="!form.model_key || !form.base_url || creating" class="px-6 py-2.5 btn-primary text-sm">
+            {{ creating ? '注册中...' : '注册模型' }}
+          </button>
+        </form>
+        <p v-if="error" class="mt-3 text-red-500 text-sm">{{ error }}</p>
+      </div>
 
-    <!-- 模型列表 -->
-    <div v-if="loading" class="text-center py-8 text-gray-400">加载中...</div>
-    <div v-else-if="!models.length" class="text-center py-8 text-gray-400">暂无模型配置</div>
-    <div v-else class="space-y-3">
-      <div
-        v-for="model in models"
-        :key="model.id"
-        class="bg-white rounded-lg shadow-sm p-4 flex items-center justify-between"
-      >
-        <div>
-          <div class="flex items-center gap-2">
-            <span class="font-medium text-gray-800">{{ model.model_name }}</span>
-            <span
-              :class="model.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'"
-              class="px-2 py-0.5 rounded-full text-xs"
-            >
-              {{ model.is_active ? '活跃' : '未激活' }}
-            </span>
+      <!-- 模型列表 -->
+      <div v-if="loading" class="text-center py-12" style="color: var(--text-faint);">加载中...</div>
+      <div v-else-if="!models.length" class="text-center py-12" style="color: var(--text-faint);">暂无模型配置</div>
+      <div v-else class="space-y-3">
+        <div v-for="model in models" :key="model.id" class="glass-card rounded-xl p-5 flex items-center justify-between">
+          <div>
+            <div class="flex items-center gap-2.5">
+              <span class="font-medium" style="color: var(--text-primary);">{{ model.model_name }}</span>
+              <span class="px-2.5 py-0.5 rounded-full text-xs border"
+                :class="model.is_active ? 'text-green-500 border-green-500/30 bg-green-500/10' : 'border-transparent'"
+                :style="!model.is_active ? { color: 'var(--text-faint)', background: 'var(--bg-input)', borderColor: 'var(--border-base)' } : {}">
+                {{ model.is_active ? '活跃' : '未激活' }}
+              </span>
+            </div>
+            <p class="text-xs mt-1" style="color: var(--text-faint);">{{ model.base_url }}</p>
           </div>
-          <p class="text-xs text-gray-400 mt-1">{{ model.base_url }}</p>
+          <div class="flex items-center gap-3">
+            <button v-if="!model.is_active" @click="handleActivate(model.id)"
+              class="text-sm text-green-500 hover:text-green-400 font-medium transition px-3 py-1 rounded-lg hover:bg-green-500/10">
+              激活
+            </button>
+            <button @click="handleDelete(model.id)"
+              class="text-sm text-red-400/70 hover:text-red-500 transition px-3 py-1 rounded-lg hover:bg-red-500/10">
+              删除
+            </button>
+          </div>
         </div>
-        <button
-          @click="handleDelete(model.id)"
-          class="text-sm text-red-500 hover:text-red-600 transition"
-        >
-          删除
-        </button>
       </div>
     </div>
   </div>
@@ -105,30 +84,23 @@ async function fetchModels() {
 
 async function handleCreate() {
   if (!form.model_key || !form.base_url) return
-  creating.value = true
-  error.value = ''
+  creating.value = true; error.value = ''
   try {
-    await modelsApi.create({
-      model_name: form.model_name || '未命名',
-      model_key: form.model_key,
-      base_url: form.base_url,
-    })
-    form.model_name = ''
-    form.model_key = ''
-    form.base_url = ''
+    await modelsApi.create({ model_name: form.model_name || '未命名', model_key: form.model_key, base_url: form.base_url })
+    form.model_name = ''; form.model_key = ''; form.base_url = ''
     await fetchModels()
-  } catch (err: any) {
-    error.value = err.response?.data?.detail || '注册失败'
-  }
+  } catch (err: any) { error.value = err.response?.data?.detail || '注册失败' }
   creating.value = false
 }
 
 async function handleDelete(id: number) {
-  try {
-    await modelsApi.delete(id)
-    models.value = models.value.filter(m => m.id !== id)
-  } catch (err: any) {
-    error.value = err.response?.data?.detail || '删除失败'
-  }
+  try { await modelsApi.delete(id); models.value = models.value.filter(m => m.id !== id) }
+  catch (err: any) { error.value = err.response?.data?.detail || '删除失败' }
+}
+
+async function handleActivate(id: number) {
+  error.value = ''
+  try { await modelsApi.activate(id); await fetchModels() }
+  catch (err: any) { error.value = err.response?.data?.detail || '激活失败' }
 }
 </script>

@@ -1,75 +1,85 @@
 <template>
   <div>
-    <div v-if="loading" class="text-center py-20 text-ink-300 text-xl">
-      <span class="text-4xl block mb-4">📖</span>加载中...
+    <div v-if="loading" class="text-center py-16 text-lg" style="color: var(--text-faint);">
+      <span class="text-4xl block mb-3 animate-float">📖</span>加载中...
     </div>
 
-    <div v-else-if="!entries.length" class="text-center py-24">
-      <span class="text-7xl block mb-6">🌙</span>
-      <p class="text-ink-400 font-serif text-2xl">还没有日记</p>
-      <p class="text-ink-300 text-lg mt-3">写下今天的第一篇吧</p>
+    <div v-else-if="!entries.length" class="text-center py-20">
+      <span class="text-5xl block mb-4 animate-float">🌙</span>
+      <p class="font-serif text-xl" style="color: var(--text-muted);">还没有日记</p>
+      <p class="text-sm mt-2" style="color: var(--text-faint);">写下今天的第一篇吧</p>
     </div>
 
-    <div v-else class="space-y-6">
+    <div v-else class="space-y-4">
       <div
         v-for="entry in entries" :key="entry.NID"
         @click="$emit('select', entry)"
-        class="group bg-white/70 backdrop-blur-sm rounded-3xl border border-diary-100 p-8 hover:shadow-lg hover:shadow-diary-200/40 hover:border-diary-200 transition-all cursor-pointer"
+        class="group glass-card rounded-2xl p-6 cursor-pointer"
       >
-        <div class="flex items-center justify-between mb-5">
-          <div class="flex items-center gap-3">
-            <span class="text-base text-ink-400 bg-diary-50 px-4 py-2 rounded-full">{{ formatDate(entry.create_time) }}</span>
-            <span v-if="entry.is_open" class="text-sm text-diary-500 bg-diary-50 px-3 py-1 rounded-full">公开</span>
-            <span v-else class="text-sm text-ink-300 bg-ink-50 px-3 py-1 rounded-full">私密</span>
+        <div class="flex items-center justify-between mb-3">
+          <div class="flex items-center gap-2.5">
+            <span class="text-sm px-3 py-1 rounded-full" style="color: var(--text-muted); background: var(--accent-soft);">{{ formatDate(entry.create_time) }}</span>
+            <span v-if="entry.is_open" class="text-xs px-2.5 py-0.5 rounded-full" style="color: var(--accent); background: var(--accent-soft);">公开</span>
+            <span v-else class="text-xs px-2.5 py-0.5 rounded-full" style="color: var(--text-faint); background: var(--bg-input);">私密</span>
           </div>
-          <div class="flex items-center gap-4">
-            <span v-if="entry.weather" class="text-base text-ink-300">{{ entry.weather }}</span>
+          <div class="flex items-center gap-2">
+            <span v-if="entry.weather" class="text-sm" style="color: var(--text-faint);">{{ entry.weather }}</span>
+            <button
+              @click.stop="$emit('edit', entry)"
+              class="opacity-0 group-hover:opacity-100 text-sm transition px-2 py-1 rounded-lg"
+              style="color: var(--accent);"
+            >编辑</button>
             <button
               v-if="entry.is_open && !entry.published_to_column"
               @click.stop="handlePublish(entry.NID)"
-              class="opacity-0 group-hover:opacity-100 text-base text-diary-500 hover:text-diary-600 transition px-3 py-1 rounded-lg hover:bg-diary-50"
-            >
-              发布专栏
-            </button>
+              class="opacity-0 group-hover:opacity-100 text-sm transition px-2 py-1 rounded-lg"
+              style="color: var(--accent);"
+            >发布专栏</button>
             <button
               v-if="entry.published_to_column"
               @click.stop="handleUnpublish(entry.NID)"
-              class="opacity-0 group-hover:opacity-100 text-base text-amber-500 hover:text-amber-600 transition px-3 py-1 rounded-lg hover:bg-amber-50"
-            >
-              下架专栏
-            </button>
+              class="opacity-0 group-hover:opacity-100 text-sm text-amber-500 transition px-2 py-1 rounded-lg"
+            >下架专栏</button>
             <button
               @click.stop="handleDelete(entry.NID)"
-              class="opacity-0 group-hover:opacity-100 text-base text-red-400 hover:text-red-500 transition px-3 py-1 rounded-lg hover:bg-red-50"
-            >
-              删除
-            </button>
+              class="opacity-0 group-hover:opacity-100 text-sm text-red-400/70 hover:text-red-500 transition px-2 py-1 rounded-lg"
+            >删除</button>
           </div>
         </div>
 
-        <p class="text-ink-700 text-lg whitespace-pre-wrap line-clamp-5 leading-relaxed font-serif">{{ entry.content }}</p>
+        <p class="text-base whitespace-pre-wrap line-clamp-4 leading-relaxed font-serif" style="color: var(--text-primary);">{{ entry.content }}</p>
 
-        <div v-if="entry.tags?.length" class="mt-5 flex flex-wrap gap-2.5">
+        <div v-if="entry.tags?.length" class="mt-3 flex flex-wrap gap-2">
           <span
             v-for="tag in entry.tags" :key="tag.id"
-            class="px-4 py-1.5 bg-diary-100/80 text-diary-700 rounded-full text-base"
-            :style="tag.color ? { backgroundColor: tag.color + '20', color: tag.color } : {}"
-          >
-            #{{ tag.tag_name }}
-          </span>
+            class="px-3 py-0.5 rounded-full text-xs"
+            :style="tag.color
+              ? { backgroundColor: tag.color + '18', color: tag.color }
+              : { backgroundColor: 'var(--accent-soft)', color: 'var(--accent)' }"
+          >#{{ tag.tag_name }}</span>
         </div>
 
-        <div v-if="entry.AI_ans" class="mt-5 p-5 bg-gradient-to-r from-indigo-50 to-purple-50 rounded-2xl border border-indigo-100/50">
-          <p class="text-base text-indigo-400 mb-2 flex items-center gap-1.5">
-            <span>🤖</span> 夜记助手总结
-          </p>
-          <p class="text-lg text-indigo-700 line-clamp-3 leading-relaxed">{{ entry.AI_ans }}</p>
+        <!-- AI 总结 — 默认折叠，点击展开 -->
+        <div v-if="entry.AI_ans" class="mt-3">
+          <button
+            @click.stop="toggleAiExpand(entry.NID)"
+            class="flex items-center gap-1.5 text-xs transition"
+            style="color: var(--text-faint);"
+          >
+            <span>✨</span>
+            <span>AI 总结</span>
+            <span>{{ expandedAi.has(entry.NID) ? '▲' : '▼' }}</span>
+          </button>
+          <div v-if="expandedAi.has(entry.NID)" class="ai-response-card mt-2 p-4 rounded-xl">
+            <p class="text-sm leading-relaxed" style="color: var(--text-secondary);">{{ entry.AI_ans }}</p>
+          </div>
         </div>
       </div>
 
-      <div v-if="hasMore" class="text-center py-8">
+      <div v-if="hasMore" class="text-center py-6">
         <button @click="loadMore" :disabled="loadingMore"
-          class="px-8 py-3 text-diary-600 hover:bg-diary-50 rounded-2xl transition text-lg font-medium">
+          class="px-6 py-2.5 rounded-xl transition text-sm font-medium border"
+          style="color: var(--accent); border-color: var(--border-hover); background: var(--accent-soft);">
           {{ loadingMore ? '加载中...' : '加载更多' }}
         </button>
       </div>
@@ -83,15 +93,24 @@ import { diaryApi } from '@/api/diary'
 import { columnApi } from '@/api/column'
 import type { DiaryResponse } from '@/types'
 
-defineEmits<{ select: [entry: DiaryResponse] }>()
+defineEmits<{ select: [entry: DiaryResponse], edit: [entry: DiaryResponse] }>()
 
 const entries = ref<DiaryResponse[]>([])
 const loading = ref(true)
 const loadingMore = ref(false)
 const hasMore = ref(true)
 const pageSize = 20
+const expandedAi = ref(new Set<number>())
 
 onMounted(() => fetchEntries())
+
+function toggleAiExpand(nid: number) {
+  if (expandedAi.value.has(nid)) {
+    expandedAi.value.delete(nid)
+  } else {
+    expandedAi.value.add(nid)
+  }
+}
 
 async function handleDelete(nid: number) {
   if (!confirm('确定要删除这篇日记吗？')) return

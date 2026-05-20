@@ -18,10 +18,12 @@ router = APIRouter()
 @router.get("/", response_model=list[TagResponse], summary="获取标签列表")
 def list_tags(
     sort_by_usage: bool = True,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """返回所有标签，默认按引用次数倒序"""
-    return tag_service.get_tags(db, sort_by_usage=sort_by_usage)
+    """返回已审核的标签，管理员可看到全部"""
+    include_pending = current_user.role == "admin"
+    return tag_service.get_tags(db, sort_by_usage=sort_by_usage, include_pending=include_pending)
 
 
 @router.post("/", response_model=TagResponse, status_code=status.HTTP_201_CREATED, summary="创建标签")
@@ -30,12 +32,15 @@ def create_tag(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    # 管理员创建直接通过，普通用户需要审核
+    status_val = "approved" if current_user.role == "admin" else "pending"
     try:
         return tag_service.create_tag(
             db=db,
             tag_name=body.tag_name,
             color=body.color or "#6B7280",
             creator=current_user.user_name,
+            status=status_val,
         )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))

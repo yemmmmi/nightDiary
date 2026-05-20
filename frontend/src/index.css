@@ -4,25 +4,169 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ═══════════════════════════════════════════════════
+   日夜主题 CSS 变量
+   ═══════════════════════════════════════════════════ */
+
+:root,
+[data-theme="day"] {
+  --bg-base: #f8f5f0;
+  --bg-card: rgba(255, 255, 255, 0.75);
+  --bg-card-hover: rgba(255, 255, 255, 0.9);
+  --bg-input: rgba(255, 255, 255, 0.6);
+  --bg-nav: rgba(255, 255, 255, 0.7);
+  --border-base: rgba(212, 178, 130, 0.2);
+  --border-hover: rgba(212, 138, 51, 0.3);
+  --border-input: rgba(212, 178, 130, 0.3);
+  --border-input-focus: rgba(212, 138, 51, 0.5);
+  --text-primary: #3d3429;
+  --text-secondary: #6b5d4d;
+  --text-muted: #9c8b78;
+  --text-faint: #b8a896;
+  --accent: #d48a33;
+  --accent-soft: rgba(212, 138, 51, 0.1);
+  --ai-bg: linear-gradient(135deg, rgba(139, 92, 246, 0.06), rgba(168, 85, 247, 0.04));
+  --ai-border: rgba(139, 92, 246, 0.15);
+  --ai-text: #5b21b6;
+  --shadow-card: 0 2px 16px rgba(180, 160, 130, 0.1);
+  --shadow-card-hover: 0 8px 32px rgba(180, 160, 130, 0.15);
+}
+
+[data-theme="night"] {
+  --bg-base: #1a1632;
+  --bg-card: rgba(255, 255, 255, 0.04);
+  --bg-card-hover: rgba(255, 255, 255, 0.07);
+  --bg-input: rgba(255, 255, 255, 0.05);
+  --bg-nav: rgba(26, 22, 50, 0.85);
+  --border-base: rgba(139, 92, 246, 0.12);
+  --border-hover: rgba(167, 139, 250, 0.25);
+  --border-input: rgba(139, 92, 246, 0.15);
+  --border-input-focus: rgba(167, 139, 250, 0.5);
+  --text-primary: #ede9fe;
+  --text-secondary: #c4b5fd;
+  --text-muted: #8b7ec8;
+  --text-faint: #5b4f8a;
+  --accent: #a78bfa;
+  --accent-soft: rgba(167, 139, 250, 0.12);
+  --ai-bg: linear-gradient(135deg, rgba(139, 92, 246, 0.1), rgba(99, 60, 200, 0.06));
+  --ai-border: rgba(139, 92, 246, 0.25);
+  --ai-text: #c4b5fd;
+  --shadow-card: 0 2px 16px rgba(80, 50, 160, 0.08);
+  --shadow-card-hover: 0 8px 32px rgba(120, 80, 220, 0.12);
+}
+
+/* ═══════════════════════════════════════════════════
+   基础样式
+   ═══════════════════════════════════════════════════ */
+
 body {
-  @apply bg-amber-50/40 text-gray-800 antialiased;
+  background-color: var(--bg-base);
+  color: var(--text-primary);
   font-family: 'Noto Serif SC', 'Georgia', serif;
   font-size: 17px;
   line-height: 1.75;
+  -webkit-font-smoothing: antialiased;
+  transition: background-color 0.6s ease, color 0.4s ease;
 }
 
-/* 密码输入框圆点加大 */
+/* 密码输入框 */
 input[type="password"] {
-  font-size: 24px;
-  letter-spacing: 4px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 16px;
+  letter-spacing: 2px;
 }
 input[type="password"]::placeholder {
-  font-size: 17px;
+  font-family: 'Noto Serif SC', 'Georgia', serif;
+  font-size: 14px;
   letter-spacing: normal;
 }
 
-/* 自定义滚动条 */
+/* 滚动条 */
 ::-webkit-scrollbar { width: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #d4c5a9; border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: #b8a88a; }
+::-webkit-scrollbar-thumb { background: var(--border-base); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--accent); }
+
+/* ═══════════════════════════════════════════════════
+   通用组件类
+   ═══════════════════════════════════════════════════ */
+
+/* 玻璃卡片 */
+.glass-card {
+  background: var(--bg-card);
+  backdrop-filter: blur(20px);
+  border: 1px solid var(--border-base);
+  box-shadow: var(--shadow-card);
+  transition: all 0.3s ease;
+}
+.glass-card:hover {
+  background: var(--bg-card-hover);
+  border-color: var(--border-hover);
+  box-shadow: var(--shadow-card-hover);
+}
+
+/* 输入框 */
+.input-theme {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  background: var(--bg-input);
+  border: 1px solid var(--border-input);
+  border-radius: 0.75rem;
+  color: var(--text-primary);
+  outline: none;
+  transition: all 0.2s ease;
+}
+.input-theme:focus {
+  border-color: var(--border-input-focus);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.input-theme::placeholder {
+  color: var(--text-faint);
+}
+
+/* 主按钮 */
+.btn-primary {
+  background: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent), #000 20%));
+  color: white;
+  border-radius: 1rem;
+  font-weight: 600;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 16px color-mix(in srgb, var(--accent), transparent 60%);
+}
+.btn-primary:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 24px color-mix(in srgb, var(--accent), transparent 50%);
+}
+.btn-primary:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* 夜间星空背景装饰（仅 night 模式可见） */
+[data-theme="night"] .stars-bg {
+  opacity: 1;
+}
+[data-theme="day"] .stars-bg {
+  opacity: 0;
+}
+.stars-bg {
+  transition: opacity 0.8s ease;
+}
+
+/* AI 回应区域 */
+.ai-response-card {
+  background: var(--ai-bg);
+  border: 1px solid var(--ai-border);
+}
+.ai-response-card .ai-label {
+  color: var(--ai-text);
+}
+
+/* 浮动动画 */
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-8px); }
+}
+.animate-float {
+  animation: float 5s ease-in-out infinite;
+}

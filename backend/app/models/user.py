@@ -4,7 +4,7 @@
 
 from datetime import datetime
 from typing import TYPE_CHECKING, List, Optional
-from sqlalchemy import Integer, String, DateTime, Enum
+from sqlalchemy import Integer, String, Text, DateTime, Enum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.core.database import Base
 
@@ -26,6 +26,7 @@ class User(Base):
     role: Mapped[Optional[str]] = mapped_column("role", String(20), nullable=True, default="user")
     create_time: Mapped[Optional[datetime]] = mapped_column("create_time", DateTime, default=datetime.utcnow)
     last_time: Mapped[Optional[datetime]] = mapped_column("last_time", DateTime, nullable=True)
+    long_term_profile: Mapped[Optional[str]] = mapped_column("long_term_profile", Text, nullable=True)
 
     diary_entries: Mapped[List["DiaryEntry"]] = relationship(
         "DiaryEntry", back_populates="user", cascade="all, delete-orphan"

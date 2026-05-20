@@ -23,6 +23,7 @@ export interface TagResponse {
   color: string | null
   creator: string | null
   usage_count: number
+  status: string
   create_time: string | null
 }
 

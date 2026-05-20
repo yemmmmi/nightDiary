@@ -5,7 +5,7 @@ Token 消耗分为: cache_hit(免费)、cache_miss(付费输入)、output(付费
 
 from datetime import datetime
 from typing import Optional, TYPE_CHECKING
-from sqlalchemy import Integer, Text, DateTime, ForeignKey
+from sqlalchemy import Integer, String, Text, DateTime, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.core.database import Base
 
@@ -25,6 +25,8 @@ class Analysis(Base):
     output_tokens: Mapped[Optional[int]] = mapped_column("output_tokens", Integer, nullable=True)
     Thk_log: Mapped[Optional[str]] = mapped_column("Thk_log", Text, nullable=True)
     diary_length: Mapped[Optional[int]] = mapped_column("diary_length", Integer, nullable=True)
+    agent_mode: Mapped[Optional[str]] = mapped_column("agent_mode", String(32), nullable=True)
+    activated_agents: Mapped[Optional[str]] = mapped_column("activated_agents", Text, nullable=True)
 
     diary_entry: Mapped["DiaryEntry"] = relationship("DiaryEntry", back_populates="analysis")
 

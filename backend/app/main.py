@@ -57,6 +57,9 @@ from app.routers.tags import router as tags_router
 from app.routers.models import router as models_router
 from app.routers.analysis import router as analysis_router
 from app.routers.public_column import router as public_column_router
+from app.routers.feedback import router as feedback_router
+from app.routers.token_stats import router as token_stats_router
+from app.routers.admin import router as admin_router
 
 # 启动时自动创建数据库表
 Base.metadata.create_all(bind=engine)
@@ -84,7 +87,13 @@ app.include_router(weather_router, prefix="/weather", tags=["天气"])
 app.include_router(tags_router, prefix="/tags", tags=["标签"])
 # 注册模型路由
 app.include_router(models_router, prefix="/models", tags=["模型管理"])
+# 注册 Token 统计路由（必须在 analysis 路由之前，避免 /stats 被 /{nid} 匹配）
+app.include_router(token_stats_router, prefix="/analysis", tags=["Token 统计"])
 # 注册分析路由
 app.include_router(analysis_router, prefix="/analysis", tags=["AI 分析"])
 # 注册公开专栏路由
 app.include_router(public_column_router, prefix="/public/column", tags=["公开专栏"])
+# 注册反馈路由
+app.include_router(feedback_router, prefix="/feedback", tags=["反馈"])
+# 注册管理员路由
+app.include_router(admin_router, prefix="/admin", tags=["管理后台"])

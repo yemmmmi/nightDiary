@@ -45,6 +45,7 @@ class TagResponse(BaseModel):
     color: Optional[str]
     creator: Optional[str]
     usage_count: int
+    status: str = "approved"
     create_time: Optional[datetime]
 
     model_config = {"from_attributes": True}
